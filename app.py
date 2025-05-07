@@ -13,13 +13,23 @@ st.title("🌦️ App de Previsão Climática (Open-Meteo)")
 
 # Funções para a API Open-Meteo
 def get_city_options(city_name):
-    """Obtém todas as cidades com o nome pesquisado"""
-    url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=20&language=pt"
+    """Obtém todas as cidades com o nome pesquisado (case-insensitive)"""
+    # Converter para minúsculas para padronizar, mas manter a busca original
+    url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name.lower()}&count=20&language=pt"
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        return data.get("results", [])
+        
+        # Manter a formatação original dos nomes das cidades
+        if data.get("results"):
+            # Filtro adicional para garantir match case-insensitive
+            filtered_results = [
+                city for city in data["results"] 
+                if city['name'].lower() == city_name.lower()
+            ]
+            return filtered_results if filtered_results else data["results"]
+        return []
     except requests.exceptions.RequestException as e:
         st.error(f"Erro ao buscar cidades: {str(e)}")
         return []
