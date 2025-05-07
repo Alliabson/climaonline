@@ -4,7 +4,6 @@ import pandas as pd
 import folium
 from streamlit_folium import folium_static
 from datetime import datetime, timedelta
-import pytz
 
 # Configuração da página
 st.set_page_config(page_title="Previsão Climática", layout="wide")
@@ -13,7 +12,20 @@ st.set_page_config(page_title="Previsão Climática", layout="wide")
 st.title("🌦️ App de Previsão Climática (Open-Meteo)")
 
 # Funções para a API Open-Meteo
-def get_current_weather(latitude, longitude, timezone="auto"):
+def get_city_options(city_name):
+    """Obtém todas as cidades com o nome pesquisado"""
+    url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=20&language=pt"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("results", [])
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erro ao buscar cidades: {str(e)}")
+        return []
+
+def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
+    """Obtém dados meteorológicos para as coordenadas"""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": latitude,
@@ -22,7 +34,7 @@ def get_current_weather(latitude, longitude, timezone="auto"):
         "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum",
         "timezone": timezone,
-        "forecast_days": 16  # Máximo permitido
+        "forecast_days": forecast_days
     }
     
     try:
@@ -30,24 +42,10 @@ def get_current_weather(latitude, longitude, timezone="auto"):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao obter dados: {str(e)}")
+        st.error(f"Erro ao obter dados meteorológicos: {str(e)}")
         return None
 
-def get_city_coordinates(city_name):
-    # Serviço de geocoding gratuito (poderia usar Nominatim também)
-    url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=1"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("results"):
-            return data["results"][0]
-        return None
-    except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao geocodificar cidade: {str(e)}")
-        return None
-
-# Interpretação dos códigos de tempo
+# Dicionário de códigos de tempo (traduzido para português)
 WEATHER_CODES = {
     0: "Céu limpo",
     1: "Principalmente limpo",
@@ -80,103 +78,128 @@ WEATHER_CODES = {
 }
 
 # Interface principal
-tab1, tab2, tab3 = st.tabs(["Previsão Atual", "Previsão de 7 Dias", "Previsão de 16 Dias"])
+def main():
+    tab1, tab2, tab3 = st.tabs(["Previsão Atual", "Previsão de 7 Dias", "Previsão de 16 Dias"])
 
-with tab1:
-    st.header("Previsão do Tempo Atual")
-    city = st.text_input("Digite o nome da cidade:", key="current_city", value="São Paulo")
+    # Pesquisa de cidade
+    city_name = st.text_input("Digite o nome da cidade:", value="São Paulo", key="city_search")
     
-    if st.button("Buscar") or city:
-        city_data = get_city_coordinates(city)
+    if city_name:
+        city_options = get_city_options(city_name)
         
-        if city_data:
-            st.success(f"Localizado: {city_data['name']}, {city_data.get('admin1', '')}, {city_data.get('country', '')}")
+        if city_options:
+            # Criar lista de opções formatadas
+            options = [
+                f"{city['name']}, {city.get('admin1', '')}, {city.get('country', '')} (Lat: {city['latitude']:.2f}, Lon: {city['longitude']:.2f})"
+                for city in city_options
+            ]
             
-            weather_data = get_current_weather(city_data["latitude"], city_data["longitude"])
+            # Selecionador de cidade
+            selected_city = st.selectbox(
+                "Foram encontradas várias cidades com esse nome. Selecione a localidade correta:",
+                options,
+                index=0
+            )
+            
+            # Obter índice da cidade selecionada
+            selected_index = options.index(selected_city)
+            city_data = city_options[selected_index]
+            
+            # Obter dados meteorológicos
+            weather_data = get_weather_data(
+                city_data["latitude"],
+                city_data["longitude"],
+                city_data.get("timezone", "auto")
+            )
             
             if weather_data:
-                col1, col2 = st.columns(2)
+                # Aba de previsão atual
+                with tab1:
+                    show_current_weather(city_data, weather_data)
                 
-                with col1:
-                    current = weather_data["current"]
-                    st.subheader(f"Condições Atuais")
-                    st.metric("🌡️ Temperatura", f"{current['temperature_2m']}°C")
-                    st.metric("💧 Umidade", f"{current['relative_humidity_2m']}%")
-                    st.metric("🌬️ Vento", f"{current['wind_speed_10m']} km/h")
-                    st.metric("🌧️ Precipitação", f"{current['precipitation']} mm")
-                    st.write(f"📌 Condição: {WEATHER_CODES.get(current['weather_code'], 'Desconhecido')}")
+                # Aba de previsão de 7 dias
+                with tab2:
+                    show_weekly_forecast(city_data, weather_data)
                 
-                with col2:
-                    map_center = [city_data["latitude"], city_data["longitude"]]
-                    m = folium.Map(location=map_center, zoom_start=10)
-                    folium.Marker(
-                        location=map_center,
-                        popup=f"{city_data['name']}",
-                        tooltip="Clique para mais informações"
-                    ).add_to(m)
-                    folium_static(m, width=400, height=300)
+                # Aba de previsão de 16 dias
+                with tab3:
+                    show_extended_forecast(city_data, weather_data)
+        else:
+            st.warning("Nenhuma cidade encontrada com esse nome. Tente novamente.")
 
-with tab2:
-    st.header("Previsão para 7 Dias")
-    forecast_city = st.text_input("Digite o nome da cidade:", key="forecast_city", value="São Paulo")
+def show_current_weather(city_data, weather_data):
+    """Mostra a previsão atual"""
+    st.header("Previsão do Tempo Atual")
     
-    if st.button("Buscar Previsão Semanal") or forecast_city:
-        city_data = get_city_coordinates(forecast_city)
-        
-        if city_data:
-            weather_data = get_current_weather(city_data["latitude"], city_data["longitude"])
-            
-            if weather_data and "daily" in weather_data:
-                daily = weather_data["daily"]
-                dates = pd.to_datetime(daily["time"])
-                df = pd.DataFrame({
-                    "Data": dates,
-                    "Máxima": daily["temperature_2m_max"],
-                    "Mínima": daily["temperature_2m_min"],
-                    "Precipitação (mm)": daily["precipitation_sum"],
-                    "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]]
-                }).head(7)  # Mostrar apenas 7 dias
-                
-                st.subheader(f"Previsão para {city_data['name']}")
-                st.line_chart(df.set_index("Data")[["Máxima", "Mínima"]])
-                st.dataframe(df)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        current = weather_data["current"]
+        st.subheader(f"Condições Atuais em {city_data['name']}")
+        st.metric("🌡️ Temperatura", f"{current['temperature_2m']}°C")
+        st.metric("💧 Umidade", f"{current['relative_humidity_2m']}%")
+        st.metric("🌬️ Vento", f"{current['wind_speed_10m']} km/h")
+        st.metric("🌧️ Precipitação", f"{current['precipitation']} mm")
+        st.write(f"📌 Condição: {WEATHER_CODES.get(current['weather_code'], 'Desconhecido')}")
+    
+    with col2:
+        map_center = [city_data["latitude"], city_data["longitude"]]
+        m = folium.Map(location=map_center, zoom_start=10)
+        folium.Marker(
+            location=map_center,
+            popup=f"{city_data['name']}, {city_data.get('admin1', '')}",
+            tooltip="Clique para mais informações",
+            icon=folium.Icon(color="blue")
+        ).add_to(m)
+        folium_static(m, width=400, height=300)
 
-with tab3:
-    st.header("Previsão para 16 Dias")
-    st.info("Esta é a previsão estendida máxima disponível na API gratuita Open-Meteo")
+def show_weekly_forecast(city_data, weather_data):
+    """Mostra a previsão de 7 dias"""
+    st.header(f"Previsão para 7 Dias em {city_data['name']}")
     
-    extended_city = st.text_input("Digite o nome da cidade:", key="extended_city", value="São Paulo")
-    
-    if st.button("Buscar Previsão Estendida") or extended_city:
-        city_data = get_city_coordinates(extended_city)
+    if "daily" in weather_data:
+        daily = weather_data["daily"]
+        dates = pd.to_datetime(daily["time"])
         
-        if city_data:
-            weather_data = get_current_weather(city_data["latitude"], city_data["longitude"])
-            
-            if weather_data and "daily" in weather_data:
-                daily = weather_data["daily"]
-                dates = pd.to_datetime(daily["time"])
-                df = pd.DataFrame({
-                    "Data": dates,
-                    "Máxima": daily["temperature_2m_max"],
-                    "Mínima": daily["temperature_2m_min"],
-                    "Precipitação (mm)": daily["precipitation_sum"],
-                    "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]]
-                })
-                
-                st.subheader(f"Previsão para {city_data['name']}")
-                
-                # Gráfico de temperatura
-                st.write("### Temperaturas Máximas e Mínimas")
-                st.line_chart(df.set_index("Data")[["Máxima", "Mínima"]])
-                
-                # Gráfico de precipitação
-                st.write("### Precipitação Acumulada")
-                st.bar_chart(df.set_index("Data")["Precipitação (mm)"])
-                
-                # Tabela completa
-                st.write("### Detalhes Diários")
-                st.dataframe(df)
+        df = pd.DataFrame({
+            "Data": dates,
+            "Máxima (°C)": daily["temperature_2m_max"],
+            "Mínima (°C)": daily["temperature_2m_min"],
+            "Precipitação (mm)": daily["precipitation_sum"],
+            "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]]
+        }).head(7)  # Mostrar apenas 7 dias
+        
+        st.line_chart(df.set_index("Data")[["Máxima (°C)", "Mínima (°C)"]])
+        st.dataframe(df)
+
+def show_extended_forecast(city_data, weather_data):
+    """Mostra a previsão de 16 dias"""
+    st.header(f"Previsão Estendida para 16 Dias em {city_data['name']}")
+    st.info("Esta é a previsão máxima disponível na API gratuita Open-Meteo")
+    
+    if "daily" in weather_data:
+        daily = weather_data["daily"]
+        dates = pd.to_datetime(daily["time"])
+        
+        df = pd.DataFrame({
+            "Data": dates,
+            "Máxima (°C)": daily["temperature_2m_max"],
+            "Mínima (°C)": daily["temperature_2m_min"],
+            "Precipitação (mm)": daily["precipitation_sum"],
+            "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]]
+        })
+        
+        st.write("### Temperaturas Máximas e Mínimas")
+        st.line_chart(df.set_index("Data")[["Máxima (°C)", "Mínima (°C)"]])
+        
+        st.write("### Precipitação Acumulada")
+        st.bar_chart(df.set_index("Data")["Precipitação (mm)"])
+        
+        st.write("### Detalhes Diários")
+        st.dataframe(df)
+
+if __name__ == "__main__":
+    main()
 
 # Rodapé
 st.markdown("---")
