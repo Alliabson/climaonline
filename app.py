@@ -180,4 +180,4 @@ with tab3:
 
 # Rodapé
 st.markdown("---")
-st.markdown("App desenvolvido com Python, Streamlit e Open-Meteo API")
+st.markdown("App desenvolvido com Python, Streamlit e Open-Meteo API Alliabson @2025")
