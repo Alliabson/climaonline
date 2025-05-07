@@ -92,8 +92,7 @@ def main():
     tab1, tab2, tab3 = st.tabs(["Previsão Atual", "Previsão de 7 Dias", "Previsão de 16 Dias"])
 
     # Pesquisa de cidade
-    city_name = st.text_input("Digite o nome da cidade:", value=" ", key="city_search")
-    
+    city_name = st.text_input("Digite o nome da cidade:", value="São Paulo", key="city_search")
     if city_name:
         city_options = get_city_options(city_name)
         
