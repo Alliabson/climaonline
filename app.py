@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Previsão Climática Premium", layout="wide")
 
 # Título do aplicativo
-st.title("🌪️ App de Previsão Climática com Monitoramento de Eventos Extremos")
+st.title("🌦️ App de Previsão Climática com Monitoramento de Eventos Extremos")
 
 # Dicionário de códigos de tempo (traduzido para português)
 WEATHER_CODES = {
@@ -454,4 +454,4 @@ if __name__ == "__main__":
 
 # Rodapé
 st.markdown("---")
-st.markdown("© 2023 WeatherPro - Soluções em Monitoramento Climático Corporativo")
+st.markdown(App desenvolvido com Python, Streamlit e Open-Meteo e WeatherPro - Soluções em Monitoramento Climático Corporativo -  API Alliabson @2025")
