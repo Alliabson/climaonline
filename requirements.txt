@@ -5,3 +5,6 @@ plotly
 folium
 streamlit-folium
 matplotlib
+sqlite3
+StringIO
+
