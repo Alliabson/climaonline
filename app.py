@@ -454,4 +454,4 @@ if __name__ == "__main__":
 
 # Rodapé
 st.markdown("---")
-st.markdown(App desenvolvido com Python, Streamlit e Open-Meteo e WeatherPro - Soluções em Monitoramento Climático Corporativo -  API Alliabson @2025")
+st.markdown("App desenvolvido com Python, Streamlit e Open-Meteo e WeatherPro - Soluções em Monitoramento Climático Corporativo -  API Alliabson @2025")
