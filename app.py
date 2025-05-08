@@ -224,31 +224,46 @@ def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_d
             temp = weather_data['hourly']['temperature_2m'][i]
             time = weather_data['hourly']['time'][i]
             
-            color = 'blue' if temp < 10 else 'green' if temp < 20 else 'orange' if temp < 30 else 'red'
-            
-            folium.CircleMarker(
-                location=[latitude + 0.1 * (i % 3 - 1), longitude + 0.1 * (i % 4 - 2)],
-                radius=5 + temp/5,
-                popup=f"Temp: {temp}°C<br>Hora: {time}",
-                color=color,
-                fill=True,
-                fill_color=color
-            ).add_to(temperature_layer)
+            # Verificação para garantir que temp é um número válido
+            if temp is None:
+                continue
+                
+            try:
+                temp = float(temp)
+                color = 'blue' if temp < 10 else 'green' if temp < 20 else 'orange' if temp < 30 else 'red'
+                
+                folium.CircleMarker(
+                    location=[latitude + 0.1 * (i % 3 - 1), longitude + 0.1 * (i % 4 - 2)],
+                    radius=5 + temp/5,
+                    popup=f"Temp: {temp}°C<br>Hora: {time}",
+                    color=color,
+                    fill=True,
+                    fill_color=color
+                ).add_to(temperature_layer)
+            except (TypeError, ValueError):
+                continue
         
         temperature_layer.add_to(m)
     
     precipitation_layer = folium.FeatureGroup(name='Precipitação')
     if weather_data and 'daily' in weather_data:
         for i, precip in enumerate(weather_data['daily']['precipitation_sum']):
-            if precip > 0:
-                folium.Circle(
-                    location=[latitude + 0.05 * i, longitude - 0.05 * i],
-                    radius=precip * 100,
-                    popup=f"Precipitação: {precip}mm",
-                    color='blue',
-                    fill=True,
-                    fill_opacity=0.2
-                ).add_to(precipitation_layer)
+            if precip is None:
+                continue
+                
+            try:
+                precip = float(precip)
+                if precip > 0:
+                    folium.Circle(
+                        location=[latitude + 0.05 * i, longitude - 0.05 * i],
+                        radius=precip * 100,
+                        popup=f"Precipitação: {precip}mm",
+                        color='blue',
+                        fill=True,
+                        fill_opacity=0.2
+                    ).add_to(precipitation_layer)
+            except (TypeError, ValueError):
+                continue
     precipitation_layer.add_to(m)
     
     folium.LayerControl().add_to(m)
