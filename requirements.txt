@@ -5,7 +5,4 @@ plotly
 folium
 streamlit-folium
 matplotlib
-sqlite3
-StringIO
-fpdf2
-
+fpdf
