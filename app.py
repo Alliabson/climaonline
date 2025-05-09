@@ -662,7 +662,7 @@ def main():
     # Barra lateral
     with st.sidebar:
         st.image("https://via.placeholder.com/150x50?text=Weather+Pro", width=150)
-        st.markdown("### Serviços Profissionais")
+        st.markdown("### Indicação de Serviços Profissionais - Empresa weatherpro")
         st.markdown("""
         - Monitoramento de eventos extremos
         - Laudos técnicos personalizados
