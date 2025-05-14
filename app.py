@@ -660,55 +660,36 @@ def main():
     init_db()
     
     # Barra lateral
-    # Barra lateral
     with st.sidebar:
-        # Removida a imagem quebrada e substituída por um título estilizado
+        st.image("https://via.placeholder.com/150x50?text=Weather+Pro", width=150)
+        st.markdown("### Indicação de Serviços Profissionais - Empresa weatherpro")
         st.markdown("""
-        <style>
-        .sidebar-title {
-            font-size: 20px;
-            font-weight: bold;
-            color: #1e88e5;
-            margin-bottom: 20px;
-        }
-        </style>
-        <div class="sidebar-title">WeatherPro</div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("### Indicação de Serviços Profissionais")
-        st.markdown("""
-        - **Monitoramento** de eventos extremos
-        - **Laudos técnicos** personalizados
-        - **Alertas** em tempo real
-        - **API** para integração corporativa
+        - Monitoramento de eventos extremos
+        - Laudos técnicos personalizados
+        - Alertas em tempo real
+        - API para integração corporativa
         """)
         
         st.markdown("### Planos Disponíveis")
         st.markdown("""
         - **Básico**: Previsões padrão
-        - **Profissional**: Eventos extremos
-        - **Corporativo**: Laudos + API
+        - **Profissional**: + Eventos extremos
+        - **Corporativo**: + Laudos + API
         """)
         
         st.markdown("---")
-        st.markdown("📞 **Contato:** contato@weatherpro.com")  
-        st.markdown("🌐 [www.weatherpro.com](https://www.weatherpro.com)")
+        st.markdown("📞 Contato: contato@weatherpro.com")
+        st.markdown("🌐 www.weatherpro.com")
         
-        if st.button("📂 Ver Laudos Armazenados", key="view_reports"):
+        if st.sidebar.button("📂 Ver Laudos Armazenados"):
             show_reports_section()
 
     # Seção de pesquisa com localização automática
     st.write("### 🌍 Pesquisar por Localização")
-
-    # Usar colunas para melhor layout
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        # Campo de pesquisa que será preenchido automaticamente
-        city_name = st.text_input("Digite o nome da cidade:", 
-                                value=st.session_state.get('current_city', ''), 
-                                key="city_search",
-                                placeholder="Ex: São Paulo, Rio de Janeiro")
+        city_name = st.text_input("🔍 Digite o nome da cidade:", value="", key="city_search")
     
     with col2:
         if st.button("📍 Usar Minha Localização", help="Clique para usar sua localização atual"):
