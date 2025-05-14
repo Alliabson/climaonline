@@ -11,10 +11,11 @@ import tempfile
 from fpdf import FPDF
 import os
 from functools import partial
+from dotenv import load_dotenv
 
 # Configurações para API de focos de incêndio
+NASA_API_KEY = "de744659515921a11cf8cabac3dfed1e"  # ← Sua chave aqui
 NASA_FIRMS_API = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{api_key}/VIIRS_NOAA20_NRT/{area}/1/{date}"
-NASA_API_KEY = "DEMO_KEY"  # Chave demo - para produção, registre-se e obtenha uma chave em https://earthdata.nasa.gov/
 
 # Configuração da página
 st.set_page_config(page_title="Previsão Climática Premium", layout="wide")
@@ -605,13 +606,18 @@ def get_fire_data(latitude, longitude, radius_km=100, days_back=7):
         response = requests.get(url)
         response.raise_for_status()
         
+        # Log para depuração
+        print(f"Resposta da API: {response.text[:200]}...")  # Mostra início da resposta
+        
         # Processar os dados se a resposta não estiver vazia
         if response.text.strip():
             df = pd.read_csv(StringIO(response.text))
+            print(f"Colunas obtidas: {df.columns.tolist()}")  # Mostra colunas disponíveis
             return df
         return pd.DataFrame()
     
     except requests.exceptions.RequestException as e:
+        print(f"Erro na requisição: {str(e)}")  # Log do erro
         st.error(f"Erro ao obter dados de focos de incêndio: {str(e)}")
         return pd.DataFrame()
 
@@ -622,23 +628,59 @@ def show_fire_data(city_data):
         fire_data = get_fire_data(
             city_data["latitude"],
             city_data["longitude"],
-            radius_km=100  # Raio de 100km ao redor da cidade
+            radius_km=100
         )
     
-    if not fire_data.empty:
-        st.warning(f"⚠️ Foram detectados {len(fire_data)} focos de incêndio próximos nos últimos 7 dias")
-        
-        # Mostrar dados em tabela
-        st.dataframe(fire_data[['latitude', 'longitude', 'acq_date', 'confidence']]
-                     .rename(columns={
-                         'latitude': 'Latitude',
-                         'longitude': 'Longitude',
-                         'acq_date': 'Data',
-                         'confidence': 'Confiança (%)'
-                     }))
-        
-        # Mostrar no mapa
-        st.subheader("🌍 Mapa de Focos de Incêndio")
+    if fire_data is None or fire_data.empty:
+        st.success("✅ Nenhum foco de incêndio detectado nos últimos 7 dias")
+        return
+    
+    # Verificar quais colunas estão disponíveis
+    available_columns = fire_data.columns.tolist()
+    columns_to_show = []
+    
+    # Mapear colunas desejadas para possíveis nomes alternativos
+    column_mapping = {
+        'latitude': ['latitude', 'lat'],
+        'longitude': ['longitude', 'lon', 'lng'],
+        'acq_date': ['acq_date', 'date', 'acquisition_date'],
+        'confidence': ['confidence', 'conf', 'fire_confidence']
+    }
+    
+    # Encontrar as colunas correspondentes
+    for target_col, possible_names in column_mapping.items():
+        for name in possible_names:
+            if name in available_columns:
+                columns_to_show.append(name)
+                break
+    
+    if not columns_to_show:
+        st.error("Não foi possível identificar as colunas necessárias nos dados de focos de incêndio.")
+        st.write("Colunas disponíveis:", available_columns)
+        return
+    
+    st.warning(f"⚠️ Foram detectados {len(fire_data)} focos de incêndio próximos nos últimos 7 dias")
+    
+    # Mostrar dados em tabela apenas com as colunas disponíveis
+    try:
+        st.dataframe(fire_data[columns_to_show].rename(columns={
+            'lat': 'Latitude',
+            'lon': 'Longitude',
+            'lng': 'Longitude',
+            'acq_date': 'Data',
+            'date': 'Data',
+            'acquisition_date': 'Data',
+            'confidence': 'Confiança (%)',
+            'conf': 'Confiança (%)',
+            'fire_confidence': 'Confiança (%)'
+        }))
+    except Exception as e:
+        st.error(f"Erro ao exibir dados: {str(e)}")
+        st.write("Dados brutos:", fire_data)
+    
+    # Mostrar no mapa
+    st.subheader("🌍 Mapa de Focos de Incêndio")
+    try:
         fire_map = create_weather_map(
             city_data["latitude"],
             city_data["longitude"],
@@ -646,6 +688,8 @@ def show_fire_data(city_data):
             fire_data=fire_data
         )
         folium_static(fire_map)
+    except Exception as e:
+        st.error(f"Erro ao criar mapa: {str(e)}")
     else:
         st.success("✅ Nenhum foco de incêndio detectado nos últimos 7 dias")
 
