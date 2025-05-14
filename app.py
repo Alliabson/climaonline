@@ -3,13 +3,14 @@ import requests
 import pandas as pd
 from io import StringIO
 import folium
-from streamlit_folium import folium_static
+from streamlit_folium import folium_static, st_folium
 from datetime import datetime, timedelta
 import sqlite3
 from folium import plugins
 import tempfile
 from fpdf import FPDF
 import os
+from functools import partial
 
 # Configurações para API de focos de incêndio
 NASA_FIRMS_API = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{api_key}/VIIRS_NOAA20_NRT/{area}/1/{date}"
@@ -181,50 +182,50 @@ def get_satellite_images(latitude, longitude, date):
         'source': "Google Maps Satellite (simulado)",
         'date': date
     }
-
+@st.cache_data(ttl=3600)  # Cache por 1 hora
+@st.cache_data(ttl=3600)  # Cache por 1 hora
 def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_data=None):
-    """Cria um mapa meteorológico interativo similar ao WeatherPro"""
+    """Cria um mapa meteorológico interativo otimizado"""
     m = folium.Map(
         location=[latitude, longitude],
         zoom_start=10,
         tiles='https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
         attr='OpenStreetMap.HOT',
-        control_scale=True,
-        prefer_canvas=True
+        control_scale=True
     )
     
-    # Adicionar marcador da cidade
+    # Adicionar marcador principal simplificado
     folium.Marker(
         location=[latitude, longitude],
-        popup=f"<b>{city_name}</b><br>Estamos aqui",
-        tooltip=city_name,
-        icon=folium.Icon(color='red', icon='info-sign')
+        popup=f"<b>{city_name}</b>",
+        icon=folium.Icon(color='red')
     ).add_to(m)
     
-    # Adicionar camada de focos de incêndio se existirem dados
+    # Otimizar camada de focos de incêndio usando clustering
     if fire_data is not None and not fire_data.empty:
-        fire_layer = folium.FeatureGroup(name='Focos de Incêndio (últimos 7 dias)')
+        # Limitar a 200 pontos para performance
+        fire_data = fire_data.head(200)
+        
+        # Usar MarkerCluster para muitos pontos
+        marker_cluster = plugins.MarkerCluster(name='Focos de Incêndio (últimos 7 dias)')
         
         for _, row in fire_data.iterrows():
-            folium.CircleMarker(
+            folium.Marker(
                 location=[row['latitude'], row['longitude']],
-                radius=3,
-                popup=f"Foco em {row['acq_date']}<br>Confiança: {row['confidence']}%",
-                color='red',
-                fill=True,
-                fill_color='red'
-            ).add_to(fire_layer)
+                popup=f"Foco em {row['acq_date']}",
+                icon=folium.Icon(color='red', icon='fire', prefix='fa')
+            ).add_to(marker_cluster)
         
-        fire_layer.add_to(m)
+        marker_cluster.add_to(m)
     
+    # Otimizar camada de temperatura - amostrar a cada 12 horas em vez de 6
     if weather_data and 'hourly' in weather_data:
-        temperature_layer = folium.FeatureGroup(name='Temperatura')
+        temperature_layer = folium.FeatureGroup(name='Temperatura', show=False)
         
-        for i in range(0, len(weather_data['hourly']['time']), 6):
+        for i in range(0, len(weather_data['hourly']['time']), 12):  # Ajustado para 12
             temp = weather_data['hourly']['temperature_2m'][i]
             time = weather_data['hourly']['time'][i]
             
-            # Verificação para garantir que temp é um número válido
             if temp is None:
                 continue
                 
@@ -234,60 +235,46 @@ def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_d
                 
                 folium.CircleMarker(
                     location=[latitude + 0.1 * (i % 3 - 1), longitude + 0.1 * (i % 4 - 2)],
-                    radius=5 + temp/5,
+                    radius=5,
                     popup=f"Temp: {temp}°C<br>Hora: {time}",
                     color=color,
-                    fill=True,
-                    fill_color=color
+                    fill=True
                 ).add_to(temperature_layer)
             except (TypeError, ValueError):
                 continue
         
         temperature_layer.add_to(m)
     
-    precipitation_layer = folium.FeatureGroup(name='Precipitação')
+    # Simplificar camada de precipitação
     if weather_data and 'daily' in weather_data:
-        for i, precip in enumerate(weather_data['daily']['precipitation_sum']):
-            if precip is None:
+        precipitation_layer = folium.FeatureGroup(name='Precipitação', show=False)
+        
+        for i, precip in enumerate(weather_data['daily']['precipitation_sum'][:7]):  # Limitar a 7 dias
+            if precip is None or float(precip) <= 0:
                 continue
                 
-            try:
-                precip = float(precip)
-                if precip > 0:
-                    folium.Circle(
-                        location=[latitude + 0.05 * i, longitude - 0.05 * i],
-                        radius=precip * 100,
-                        popup=f"Precipitação: {precip}mm",
-                        color='blue',
-                        fill=True,
-                        fill_opacity=0.2
-                    ).add_to(precipitation_layer)
-            except (TypeError, ValueError):
-                continue
-    precipitation_layer.add_to(m)
+            folium.Circle(
+                location=[latitude + 0.05 * i, longitude - 0.05 * i],
+                radius=float(precip) * 50,  # Reduzir escala
+                popup=f"Precipitação: {precip}mm",
+                color='blue',
+                fill=True,
+                fill_opacity=0.2
+            ).add_to(precipitation_layer)
+        
+        precipitation_layer.add_to(m)
     
-    folium.LayerControl().add_to(m)
-    
-    plugins.Fullscreen(
-        position='topright',
-        title='Expandir mapa',
-        title_cancel='Sair do modo tela cheia',
-        force_separate_button=True
-    ).add_to(m)
-    
-    plugins.MiniMap(tile_layer='OpenStreetMap', position='bottomright').add_to(m)
-    
-    plugins.LocateControl(
-        auto_start=False,
-        position='topright',
-        draw_circle=True,
-        fly_to=True,
-        keep_current_zoom_level=True,
-        locate_options={'enableHighAccuracy': True}
-    ).add_to(m)
+    # Adicionar controles de forma otimizada
+    plugins.Fullscreen(position='topright').add_to(m)
+    plugins.MiniMap(position='bottomright').add_to(m)
     
     return m
-
+# Modifique a exibição do mapa para usar lazy loading
+def show_optimized_map(m, key):
+    """Exibe o mapa com lazy loading"""
+    if st.checkbox(f"Mostrar Mapa Interativo ({key})", key=f"show_map_{key}"):
+        with st.spinner("Carregando mapa..."):
+            folium_static(m, width=700, height=500)
 def generate_pdf_report(report):
     """Gera um PDF do laudo técnico usando FPDF"""
     pdf = FPDF()
@@ -425,7 +412,14 @@ def show_current_weather(city_data, weather_data):
             city_data["name"],
             weather_data
         )
-        folium_static(m, width=400, height=400)
+        map_data = st_folium(m, width=400, height=400, key=f"map_{city_data['name']}")
+        
+        # Se o usuário clicou no mapa, atualiza a localização
+        if map_data.get("last_clicked"):
+            st.session_state['map_click'] = {
+                "lat": map_data["last_clicked"]["lat"],
+                "lon": map_data["last_clicked"]["lng"]
+            }
 
 def show_weekly_forecast(city_data, weather_data):
     st.header(f"📅 Previsão para 7 Dias em {city_data['name']}")
@@ -661,103 +655,273 @@ def main():
     
     # Barra lateral
     with st.sidebar:
-        st.image("https://via.placeholder.com/150x50?text=Weather+Pro", width=150)
-        st.markdown("### Indicação de Serviços Profissionais - Empresa weatherpro")
+        # Removida a imagem quebrada e substituída por um título estilizado
         st.markdown("""
-        - Monitoramento de eventos extremos
-        - Laudos técnicos personalizados
-        - Alertas em tempo real
-        - API para integração corporativa
+        <style>
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1e88e5;
+            margin-bottom: 20px;
+        }
+        </style>
+        <div class="sidebar-title">WeatherPro</div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("### Indicação de Serviços Profissionais")
+        st.markdown("""
+        - **Monitoramento** de eventos extremos
+        - **Laudos técnicos** personalizados
+        - **Alertas** em tempo real
+        - **API** para integração corporativa
         """)
         
         st.markdown("### Planos Disponíveis")
         st.markdown("""
         - **Básico**: Previsões padrão
-        - **Profissional**: + Eventos extremos
-        - **Corporativo**: + Laudos + API
+        - **Profissional**: Eventos extremos
+        - **Corporativo**: Laudos + API
         """)
         
         st.markdown("---")
-        st.markdown("📞 Contato: contato@weatherpro.com")
-        st.markdown("🌐 www.weatherpro.com")
+        st.markdown("📞 **Contato:** contato@weatherpro.com")  
+        st.markdown("🌐 [www.weatherpro.com](https://www.weatherpro.com)")
         
-        if st.sidebar.button("📂 Ver Laudos Armazenados"):
+        if st.button("📂 Ver Laudos Armazenados", key="view_reports"):
             show_reports_section()
 
     # Seção de pesquisa com localização automática
     st.write("### 🌍 Pesquisar por Localização")
+    
+    # Usar colunas para melhor layout
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        city_name = st.text_input("🔍 Digite o nome da cidade:", value="", key="city_search")
+        # Campo de pesquisa que será preenchido automaticamente
+        city_name = st.text_input("Digite o nome da cidade:", 
+                                value=st.session_state.get('current_city', ''), 
+                                key="city_search",
+                                placeholder="Ex: São Paulo, Rio de Janeiro")
     
     with col2:
-        if st.button("📍 Usar Minha Localização", help="Clique para usar sua localização atual"):
-            try:
-                # Componente para geolocalização
-                st.components.v1.html("""
-                <script>
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        window.parent.postMessage({
-                            type: 'streamlit:setComponentValue',
-                            value: position.coords.latitude + "," + position.coords.longitude
-                        }, '*');
-                    },
-                    function(error) {
-                        console.error("Error getting location: ", error);
-                    }
-                );
-                </script>
-                """, height=0)
-                
-                # Verificar se a localização foi recebida
-                location = st.session_state.get('location', None)
-                
-                if location:
-                    lat, lon = map(float, location.split(','))
-                    city_data = {
-                        "name": "Local Atual",
-                        "latitude": lat,
-                        "longitude": lon,
-                        "admin1": "",
-                        "country": ""
-                    }
-                    
-                    weather_data = get_weather_data(lat, lon)
-                    
-                    if weather_data:
-                        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                            "⏱️ Atual", 
-                            "📅 7 Dias", 
-                            "📊 16 Dias",
-                            "⚠️ Eventos Extremos",
-                            "🔥 Focos de Incêndio"
-                        ])
+        st.write("")  # Espaçamento
+        st.write("")  # Espaçamento
+        if st.button("📍 Usar Minha Localização", 
+                    help="Clique e permita o acesso à localização no seu navegador",
+                    key="get_location"):
+            st.session_state.trying_location = True
 
-                        with tab1:
-                            show_current_weather(city_data, weather_data)
-                        
-                        with tab2:
-                            show_weekly_forecast(city_data, weather_data)
-                        
-                        with tab3:
-                            show_extended_forecast(city_data, weather_data)
-                        
-                        with tab4:
-                            show_extreme_events(city_data, weather_data)
-                        
-                        with tab5:
-                            show_fire_data(city_data)
-                    else:
-                        st.error("Não foi possível obter dados para sua localização")
-                else:
-                    st.warning("Permissão de localização não concedida ou não disponível")
-            except Exception as e:
-                st.error(f"Erro ao obter localização: {str(e)}")
+    # Componente de geolocalização que sempre roda
+    location_component = """
+    <script>
+    function sendLocation(lat, lon) {
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            key: 'user_location',
+            value: `Minha Localização,${lat},${lon}`
+        }, '*');
+    }
+    
+    function sendError(error) {
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            key: 'location_error',
+            value: error
+        }, '*');
+    }
+    
+    if (%s) {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    sendLocation(position.coords.latitude, position.coords.longitude);
+                },
+                function(error) {
+                    let errorMessage;
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage = "Usuário negou a solicitação de geolocalização.";
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage = "As informações de localização não estão disponíveis.";
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage = "A solicitação de localização expirou.";
+                            break;
+                        case error.UNKNOWN_ERROR:
+                            errorMessage = "Ocorreu um erro desconhecido.";
+                            break;
+                    }
+                    sendError(errorMessage);
+                },
+                {enableHighAccuracy: true, timeout: 10000, maximumAge: 0}
+            );
+        } else {
+            sendError("Geolocalização não é suportada por este navegador.");
+        }
+    }
+    </script>
+    """ % str(st.session_state.get('trying_location', False)).lower()
+
+    st.components.v1.html(location_component, height=0)
+
+    # Processar resposta da geolocalização
+    if 'user_location' in st.session_state:
+        parts = st.session_state.user_location.split(',')
+        display_name = parts[0]
+        lat = float(parts[1])
+        lon = float(parts[2])
+        
+        st.session_state.current_city = display_name
+        st.session_state.current_location = {"lat": lat, "lon": lon}
+        st.session_state.trying_location = False
+        st.session_state.pop('user_location', None)
+        st.experimental_rerun()
+
+    if 'location_error' in st.session_state:
+        st.warning(st.session_state.location_error)
+        st.session_state.trying_location = False
+        st.session_state.pop('location_error', None)
+
+    # Exibir dados baseados na localização atual
+    if 'current_location' in st.session_state and st.session_state.current_city == "Minha Localização":
+        lat = st.session_state.current_location["lat"]
+        lon = st.session_state.current_location["lon"]
+        
+        city_data = {
+            "name": "Minha Localização",
+            "latitude": lat,
+            "longitude": lon,
+            "admin1": "",
+            "country": ""
+        }
+        
+        weather_data = get_weather_data(lat, lon)
+        
+        if weather_data:
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                "⏱️ Atual", 
+                "📅 7 Dias", 
+                "📊 16 Dias",
+                "⚠️ Eventos Extremos",
+                "🔥 Focos de Incêndio"
+            ])
+
+            with tab1:
+                show_current_weather(city_data, weather_data)
+            
+            with tab2:
+                show_weekly_forecast(city_data, weather_data)
+            
+            with tab3:
+                show_extended_forecast(city_data, weather_data)
+            
+            with tab4:
+                show_extreme_events(city_data, weather_data)
+            
+            with tab5:
+                show_fire_data(city_data)
+    
+    # Pesquisa normal por cidade
+    elif city_name and city_name != "Minha Localização":
+        city_options = get_city_options(city_name)
+        
+        if city_options:
+            options = [
+                f"{city['name']}, {city.get('admin1', '')}, {city.get('country', '')} (Lat: {city['latitude']:.2f}, Lon: {city['longitude']:.2f})"
+                for city in city_options
+            ]
+            
+            selected_city = st.selectbox(
+                "Selecione a localidade correta:",
+                options,
+                index=0
+            )
+            
+            selected_index = options.index(selected_city)
+            city_data = city_options[selected_index]
+            
+            weather_data = get_weather_data(
+                city_data["latitude"],
+                city_data["longitude"],
+                city_data.get("timezone", "auto")
+            )
+            
+            if weather_data:
+                tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                    "⏱️ Atual", 
+                    "📅 7 Dias", 
+                    "📊 16 Dias",
+                    "⚠️ Eventos Extremos",
+                    "🔥 Focos de Incêndio"
+                ])
+                
+                with tab1:
+                    show_current_weather(city_data, weather_data)
+                
+                with tab2:
+                    show_weekly_forecast(city_data, weather_data)
+                
+                with tab3:
+                    show_extended_forecast(city_data, weather_data)
+                
+                with tab4:
+                    show_extreme_events(city_data, weather_data)
+                
+                with tab5:
+                    show_fire_data(city_data)
+        
+        # Pesquisa normal por cidade
+        else:
+            city_options = get_city_options(city_name)
+            
+            if city_options:
+                options = [
+                    f"{city['name']}, {city.get('admin1', '')}, {city.get('country', '')} (Lat: {city['latitude']:.2f}, Lon: {city['longitude']:.2f})"
+                    for city in city_options
+                ]
+                
+                selected_city = st.selectbox(
+                    "Selecione a localidade correta:",
+                    options,
+                    index=0
+                )
+                
+                selected_index = options.index(selected_city)
+                city_data = city_options[selected_index]
+                
+                weather_data = get_weather_data(
+                    city_data["latitude"],
+                    city_data["longitude"],
+                    city_data.get("timezone", "auto")
+                )
+                
+                if weather_data:
+                    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                        "⏱️ Atual", 
+                        "📅 7 Dias", 
+                        "📊 16 Dias",
+                        "⚠️ Eventos Extremos",
+                        "🔥 Focos de Incêndio"
+                    ])
+                    
+                    with tab1:
+                        show_current_weather(city_data, weather_data)
+                    
+                    with tab2:
+                        show_weekly_forecast(city_data, weather_data)
+                    
+                    with tab3:
+                        show_extended_forecast(city_data, weather_data)
+                    
+                    with tab4:
+                        show_extreme_events(city_data, weather_data)
+                    
+                    with tab5:
+                        show_fire_data(city_data)
     
     # Seção principal apenas se uma cidade foi pesquisada
-    if city_name:
+    elif city_name:
         city_options = get_city_options(city_name)
         
         if city_options:
@@ -808,6 +972,18 @@ def main():
 if __name__ == "__main__":
     main()
 
-# Rodapé
+# Rodapé estilizado
 st.markdown("---")
-st.markdown("App desenvolvido com Python, Streamlit e Open-Meteo e WeatherPro - Soluções em Monitoramento Climático Corporativo - API Alliabson @2025")
+st.markdown("""
+<style>
+.footer {
+    font-size: 14px;
+    text-align: center;
+    color: #666;
+    margin-top: 20px;
+}
+</style>
+<div class="footer">
+App desenvolvido com Python, Streamlit e Open-Meteo | WeatherPro - Soluções em Monitoramento Climático Corporativo | © 2025
+</div>
+""", unsafe_allow_html=True)
