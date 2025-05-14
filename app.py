@@ -509,6 +509,25 @@ def show_extreme_events(city_data, weather_data):
                     for e in event['events']:
                         st.write(f"- 🔥 {e}")
                     
+                    # Criar e mostrar mapa para o evento
+                    event_map = create_weather_map(
+                        city_data["latitude"],
+                        city_data["longitude"],
+                        city_data["name"],
+                        weather_data=None,  # Não temos dados horários para histórico
+                        fire_data=None
+                    )
+                    
+                    # Adicionar marcador especial para o evento
+                    folium.Marker(
+                        location=[city_data["latitude"], city_data["longitude"]],
+                        popup=f"Evento extremo em {event['date']}",
+                        icon=folium.Icon(color='black', icon='exclamation-triangle', prefix='fa')
+                    ).add_to(event_map)
+                    
+                    # Mostrar o mapa
+                    folium_static(event_map, width=700, height=400)
+                    
                     satellite_img = get_satellite_images(
                         city_data["latitude"],
                         city_data["longitude"],
