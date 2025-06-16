@@ -161,16 +161,21 @@ h1, h2, h3, h4, h5, h6 {
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     margin: 5px;
-    display: inline-block; /* Para scroll horizontal */
+    display: inline-flex; /* Usar flexbox para alinhamento e tamanho */
+    flex-direction: column; /* Conteúdo em coluna */
+    justify-content: space-between; /* Espaçamento entre itens */
+    align-items: center; /* Centralizar horizontalmente */
     min-width: 120px; /* Largura mínima do cartão */
-    text-align: center;
-    vertical-align: top;
-    white-space: normal; /* Permite que o texto quebre linha */
+    max-width: 150px; /* Largura máxima para não ficar muito largo */
+    height: 160px; /* Altura fixa para uniformidade */
+    vertical-align: top; /* Alinha no topo quando inline-flex */
+    box-sizing: border-box; /* Inclui padding e border na largura/altura */
 }
 .hourly-card .time {
     font-weight: bold;
     font-size: 1.1em;
     color: #1E88E5;
+    white-space: nowrap; /* Mantém a hora na mesma linha */
 }
 .hourly-card .temp {
     font-size: 1.3em;
@@ -184,11 +189,20 @@ h1, h2, h3, h4, h5, h6 {
 .hourly-card .condition {
     font-size: 0.9em;
     color: #555;
+    white-space: normal; /* Permite que o texto quebre linha */
+    text-align: center;
+    flex-grow: 1; /* Permite que o texto de condição use o espaço disponível */
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* Limita a 2 linhas */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .hourly-card-container {
     overflow-x: auto; /* Permite scroll horizontal */
-    white-space: nowrap; /* Mantém os itens na mesma linha */
+    display: flex; /* Usar flexbox para o container de cartões */
+    flex-wrap: nowrap; /* Impede que os itens quebrem linha */
     padding-bottom: 10px; /* Espaço para o scrollbar */
+    gap: 10px; /* Espaçamento entre os cartões */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -258,7 +272,7 @@ def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
     params = {
         "latitude": latitude, "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
-        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure",
+        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure", # Added surface_pressure for more data
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset",
         "timezone": timezone,
         "forecast_days": forecast_days
@@ -641,18 +655,18 @@ def show_hourly_forecast(city_data, weather_data):
             st.plotly_chart(fig_precip_hourly, use_container_width=True)
 
             st.write("### Detalhes Horários:")
-            # Cartões scrolláveis horizontalmente
-            st.markdown('<div class="hourly-card-container">', unsafe_allow_html=True)
+            # Gera os cartões como uma única string HTML para rolagem horizontal
+            hourly_cards_html = ""
             for idx, row in df_hourly.iterrows():
                 time_display = row['Hora'].strftime("%H:%M")
                 date_display = row['Hora'].strftime("%d/%m")
-                # Se for a primeira hora, ou se o dia mudou, mostra a data
+                # Adiciona a data no cartão se for a primeira hora ou se o dia mudou
                 if idx == 0 or row['Hora'].day != df_hourly['Hora'].iloc[idx-1].day:
                     time_info = f"<div style='font-size:0.8em; opacity:0.7;'>{date_display}</div>{time_display}"
                 else:
                     time_info = time_display
-
-                st.markdown(f"""
+                
+                hourly_cards_html += f"""
                 <div class="hourly-card">
                     <div class="time">{time_info}</div>
                     <div class="icon">{row['Ícone']}</div>
@@ -660,9 +674,9 @@ def show_hourly_forecast(city_data, weather_data):
                     <div class="condition">{row['Condição']}</div>
                     <div>{row['Precipitação (mm)']}mm</div>
                 </div>
-                """, unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
+                """
+            # Renderiza o container e todos os cartões de uma vez
+            st.markdown(f'<div class="hourly-card-container">{hourly_cards_html}</div>', unsafe_allow_html=True)
 
         else:
             st.info("Nenhum dado de previsão horária disponível para as próximas 48 horas.")
