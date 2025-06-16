@@ -13,16 +13,20 @@ import os
 from functools import partial
 from dotenv import load_dotenv
 import plotly.express as px
-import math
+import math # Importar math para o cálculo da longitude no get_fire_data
 
 # Carregar variáveis de ambiente
 load_dotenv()
+# Tente obter a chave da API da NASA de forma segura primeiro (ambiente ou secrets do Streamlit Cloud).
+# Se não estiver configurada, use a chave que você forneceu diretamente no código,
+# mas para produção, é fortemente recomendado usar variáveis de ambiente ou secrets.
 NASA_API_KEY = os.getenv("NASA_API_KEY", "de744659515921a11cf8cabac3dfed1e")
 NASA_FIRMS_API = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{api_key}/VIIRS_NOAA20_NRT/{area}/1/{date}"
 
 # --- CONFIGURAÇÃO DA PÁGINA E ESTILOS ---
 st.set_page_config(page_title="Previsão Climática Premium", layout="wide", initial_sidebar_state="expanded")
 
+# Injetar CSS personalizado para estilização similar ao app da Microsoft
 st.markdown("""
 <style>
 /* Estilos globais e de corpo */
@@ -564,7 +568,7 @@ def show_extended_forecast(city_data, weather_data):
         daily = weather_data["daily"]
         dates = pd.to_datetime(daily["time"])
 
-        st.write(f"**A API retornou dados para {len(dates)} dias.**")
+        st.write(f"**A API retornou dados para {len(dates)} dias.**") # Feedback sobre o nº de dias recebidos
 
         df = pd.DataFrame({
             "Data": dates,
@@ -832,6 +836,7 @@ def main():
     # Seção de pesquisa com localização automática
     st.write("### 🌍 Pesquisar por Localização")
 
+    # Inicializa estados de sessão
     if 'current_city_search' not in st.session_state:
         st.session_state.current_city_search = ""
     if 'current_city_display' not in st.session_state:
@@ -851,12 +856,12 @@ def main():
                                        placeholder="Ex: São Paulo, Rio de Janeiro")
 
     with col2:
-        st.write("")
+        st.write("") # Espaçamento para alinhar o botão
         st.write("")
         if st.button("📍 Usar Minha Localização",
                      help="Clique e permita o acesso à localização no seu navegador",
                      key="get_location_button"):
-            st.session_state.trigger_geolocation = True
+            st.session_state.trigger_geolocation = True # Ativa o script JS
             st.session_state.current_city_search = ""
             st.session_state.current_city_display = ""
             st.session_state.current_location_coords = None
@@ -869,7 +874,7 @@ def main():
     const triggerGeolocation = {str(st.session_state.get('trigger_geolocation', False)).lower()};
 
     if (streamlitAppReady && triggerGeolocation) {{
-        Streamlit.setComponentValue('trigger_geolocation', false);
+        Streamlit.setComponentValue('trigger_geolocation', false); // Consome o trigger para evitar loops
 
         if (navigator.geolocation) {{
             navigator.geolocation.getCurrentPosition(
@@ -877,7 +882,7 @@ def main():
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
                     const message = `Minha Localização,${{lat}},${{lon}}`;
-                    Streamlit.setComponentValue('user_location_result', message);
+                    Streamlit.setComponentValue('user_location_result', message); // Envia o resultado para o Python
                 }},
                 function(error) {{
                     let errorMessage;
@@ -892,9 +897,9 @@ def main():
                             errorMessage = "Tempo limite para obter localização excedido.";
                             break;
                         default:
-                            errorMessage = "Erro desconhecido ao obter localização.";
+                            errorMessage = "Ocorreu um erro desconhecido ao tentar obter a localização.";
                     }}
-                    Streamlit.setComponentValue('location_error_message', errorMessage);
+                    Streamlit.setComponentValue('location_error_message', errorMessage); // Envia o erro para o Python
                 }},
                 {{enableHighAccuracy: true, timeout: 10000, maximumAge: 0}}
             );
@@ -907,15 +912,18 @@ def main():
     st.components.v1.html(geolocation_script, height=0)
 
 
-    # Processar resposta da geolocalização
+    # Processar resposta da geolocalização (se houver um resultado do JS)
     if st.session_state.get('user_location_result'):
         parts = st.session_state.user_location_result.split(',')
         lat = float(parts[1])
         lon = float(parts[2])
 
         try:
+            # Reversão de geocoding para um nome de cidade amigável
             geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
-            geo_response = requests.get(geo_url)
+            # Definindo um User-Agent para evitar ser bloqueado por algumas APIs
+            headers = {'User-Agent': 'WeatherAppStreamlit/1.0 (contact@weatherpro.com)'}
+            geo_response = requests.get(geo_url, headers=headers)
             geo_response.raise_for_status()
             geo_data = geo_response.json()
             if geo_data and geo_data.get('address'):
@@ -933,25 +941,27 @@ def main():
             st.session_state.current_city_display = f"Localização Detectada (Lat: {lat:.2f}, Lon: {lon:.2f})"
 
         st.session_state.current_location_coords = {"lat": lat, "lon": lon}
-        st.session_state.current_city_search = st.session_state.current_city_display
-        st.session_state.pop('user_location_result')
+        st.session_state.current_city_search = st.session_state.current_city_display # Preenche o input de busca
+        st.session_state.pop('user_location_result') # Limpa o resultado para evitar re-execução desnecessária
 
-
+    # Exibe erros da geolocalização, se houver
     if st.session_state.get('location_error_message'):
         st.warning(st.session_state.location_error_message)
         st.session_state.pop('location_error_message')
 
-
+    # Lógica para determinar qual localização exibir (manual ou automática)
     selected_city_data = None
     if st.session_state.get('current_location_coords') and not city_name_input:
+        # Se a localização automática foi detectada E o usuário não digitou nada
         selected_city_data = {
             "name": st.session_state.get('current_city_display', "Minha Localização"),
             "latitude": st.session_state.current_location_coords["lat"],
             "longitude": st.session_state.current_location_coords["lon"],
-            "admin1": "", "country": ""
+            "admin1": "", "country": "" # Estes podem ser aprimorados com o geocoding reverso
         }
         st.info(f"Mostrando clima para: **{selected_city_data['name']}**")
     elif city_name_input:
+        # Se o usuário digitou uma cidade
         city_options = get_city_options(city_name_input)
         if city_options:
             options_display = [f"{city['name']}, {city.get('admin1', '')}, {city.get('country', '')} (Lat: {city['latitude']:.2f}, Lon: {city['longitude']:.2f})" for city in city_options]
@@ -959,16 +969,19 @@ def main():
                 "📍 Selecione a localidade correta:",
                 options_display,
                 key="city_selection_box",
-                index=0
+                index=0 # Seleciona a primeira opção por padrão
             )
             selected_index = options_display.index(selected_option)
             selected_city_data = city_options[selected_index]
+            # Uma vez que uma cidade é selecionada manualmente, resetar o estado da geolocalização para evitar conflitos
             st.session_state.current_location_coords = None
             st.session_state.current_city_display = ""
         else:
             st.warning("Nenhuma cidade encontrada com esse nome. Tente novamente ou use a localização automática.")
 
+    # Exibe as abas de informações climáticas se uma cidade foi selecionada/detectada
     if selected_city_data:
+        # Obter todos os dados de API necessários para as abas
         weather_data = get_weather_data(
             selected_city_data["latitude"],
             selected_city_data["longitude"],
@@ -985,6 +998,7 @@ def main():
         )
 
         if weather_data:
+            # Define as abas principais
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
                 "⏱️ Atual", "📅 7 Dias", "📊 16 Dias",
                 "⚠️ Eventos Extremos", "🔥 Focos de Incêndio", "🌬️ Qualidade do Ar"
@@ -1010,13 +1024,16 @@ def main():
         else:
             st.error("Não foi possível obter dados de clima para a localização selecionada.")
     elif st.session_state.get('show_stored_reports'):
+        # Se o botão de ver laudos foi clicado na sidebar, mostra a seção de laudos
         show_reports_section()
     else:
+        # Mensagem inicial se nenhuma cidade foi selecionada
         st.info("Por favor, digite uma cidade ou use sua localização para começar.")
 
 if __name__ == "__main__":
     main()
 
+# Rodapé estilizado
 st.markdown("---")
 st.markdown("""
 <div class="footer">
