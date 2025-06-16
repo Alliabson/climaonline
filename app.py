@@ -676,7 +676,10 @@ def show_hourly_forecast(city_data, weather_data):
                 </div>
                 """
             # Renderiza o container principal com o HTML acumulado de todos os cartões
-            st.markdown(f'<div class="hourly-card-container">{hourly_cards_html_content}</div>', unsafe_allow_html=True)
+            # **********************************************************************
+            # CORREÇÃO CRÍTICA AQUI: Usando st.components.v1.html para forçar a renderização HTML
+            # **********************************************************************
+            st.components.v1.html(f'<div class="hourly-card-container">{hourly_cards_html_content}</div>', height=200, scrolling=True)
 
         else:
             st.info("Nenhum dado de previsão horária disponível para as próximas 48 horas.")
@@ -1171,7 +1174,7 @@ def main():
 
         if weather_data:
             tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-                "⏱️ Atual", "Previsão Horária", "📅 7 Dias", "📊 16 Dias", # Título da aba corrigido aqui
+                "⏱️ Atual", "Previsão Horária", "📅 7 Dias", "📊 16 Dias",
                 "⚠️ Eventos Extremos", "🔥 Focos de Incêndio", "🌬️ Qualidade do Ar"
             ])
 
