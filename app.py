@@ -1195,7 +1195,7 @@ def main():
     # Barra lateral
     with st.sidebar:
         st.markdown("""
-        <div class="sidebar-title">WeatherPro</div>
+        <div class="sidebar-title">🌦️ App de Previsão Climática Avançado</div>
         """, unsafe_allow_html=True)
 
         # Removed marketing content as requested
