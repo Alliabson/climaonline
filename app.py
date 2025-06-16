@@ -15,15 +15,18 @@ from dotenv import load_dotenv
 import plotly.express as px
 import math # Adicionar import para math.cos
 
-# Carregar variáveis de ambiente (garanta que .env ou Streamlit Secrets estejam configurados)
+# Carregar variáveis de ambiente
 load_dotenv()
-# Tente obter a chave de forma segura primeiro, se não conseguir, use a do seu código original (mas evite em produção)
+# Tente obter a chave da API da NASA de forma segura primeiro (ambiente ou secrets do Streamlit Cloud).
+# Se não estiver configurada, use a chave que você forneceu diretamente no código,
+# mas para produção, é fortemente recomendado usar variáveis de ambiente ou secrets.
 NASA_API_KEY = os.getenv("NASA_API_KEY", "de744659515921a11cf8cabac3dfed1e")
 NASA_FIRMS_API = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{api_key}/VIIRS_NOAA20_NRT/{area}/1/{date}"
 
 # --- CONFIGURAÇÃO DA PÁGINA E ESTILOS ---
 st.set_page_config(page_title="Previsão Climática Premium", layout="wide", initial_sidebar_state="expanded")
 
+# Injetar CSS personalizado para estilização similar ao app da Microsoft
 st.markdown("""
 <style>
 /* Estilos globais e de corpo */
@@ -160,12 +163,14 @@ def init_db():
 # Funções da API Open-Meteo
 @st.cache_data(ttl=3600) # Cache por 1 hora
 def get_city_options(city_name):
+    """Obtém opções de cidades a partir do nome pesquisado."""
     url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name.lower()}&count=20&language=pt"
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
         if data.get("results"):
+            # Prioriza correspondência exata, depois outras
             filtered_results = [city for city in data["results"] if city['name'].lower() == city_name.lower()]
             return filtered_results if filtered_results else data["results"]
         return []
@@ -175,6 +180,7 @@ def get_city_options(city_name):
 
 @st.cache_data(ttl=600) # Cache por 10 minutos
 def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
+    """Obtém dados meteorológicos para as coordenadas."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": latitude, "longitude": longitude,
@@ -182,7 +188,7 @@ def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
         "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset",
         "timezone": timezone,
-        "forecast_days": forecast_days
+        "forecast_days": forecast_days # Solicita até 16 dias
     }
     try:
         response = requests.get(url, params=params)
@@ -194,6 +200,7 @@ def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
 
 @st.cache_data(ttl=3600) # Cache por 1 hora
 def get_historical_weather_data(latitude, longitude, start_date, end_date):
+    """Obtém dados históricos para análise de eventos extremos."""
     url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
         "latitude": latitude, "longitude": longitude,
@@ -212,6 +219,7 @@ def get_historical_weather_data(latitude, longitude, start_date, end_date):
 
 @st.cache_data(ttl=3600) # Cache por 1 hora
 def get_air_quality_data(latitude, longitude):
+    """Obtém dados de qualidade do ar para as coordenadas (Open-Meteo Air Quality)."""
     url = "https://air-quality-api.open-meteo.com/v1/air-quality"
     params = {
         "latitude": latitude,
@@ -228,6 +236,7 @@ def get_air_quality_data(latitude, longitude):
         return None
 
 def detect_extreme_events(weather_data):
+    """Identifica eventos climáticos extremos nos dados."""
     extreme_events = []
     threshold = {
         'precipitation': 50, # mm/dia
@@ -256,6 +265,8 @@ def detect_extreme_events(weather_data):
     return extreme_events
 
 def get_satellite_images(latitude, longitude, date):
+    """Obtém imagens de satélite próximas à data do evento (simulado para este exemplo)."""
+    # Substituir por uma API de imagens de satélite real se disponível
     return {
         'image_url': f"https://via.placeholder.com/600x300?text=Imagem+Sat%C3%A9lite+{date}",
         'source': "Google Maps Satellite (simulado)",
@@ -264,10 +275,11 @@ def get_satellite_images(latitude, longitude, date):
 
 @st.cache_data(ttl=3600)
 def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_data=None, air_quality_data=None):
+    """Cria um mapa meteorológico interativo com camadas."""
     m = folium.Map(
         location=[latitude, longitude],
         zoom_start=10,
-        tiles='OpenStreetMap',
+        tiles='OpenStreetMap', # Base map mais comum e limpa
         attr='OpenStreetMap',
         control_scale=True
     )
@@ -278,17 +290,16 @@ def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_d
         icon=folium.Icon(color='red', icon='cloud', prefix='fa')
     ).add_to(m)
 
-    # Reintroduzir camada de temperatura de forma mais simples ou com HeatMap se muitos pontos
+    # Camada de Temperatura Horária (para as próximas 24h, amostrada)
     if weather_data and 'hourly' in weather_data:
         temperature_layer = folium.FeatureGroup(name='Temperatura Horária (Próx. 24h)', show=False).add_to(m)
-        # Amostrar 8 pontos (a cada 3 horas) para evitar sobrecarga visual
+        # Amostrar a cada 3 horas para evitar sobrecarga visual, limitando a 24 horas
         for i in range(0, min(len(weather_data['hourly']['time']), 24), 3):
             temp = weather_data['hourly']['temperature_2m'][i]
             time_str = weather_data['hourly']['time'][i]
             if temp is not None:
                 color = 'blue' if temp < 10 else 'green' if temp < 20 else 'orange' if temp < 30 else 'red'
                 # Pequeno deslocamento para mostrar múltiplos marcadores ao redor da cidade
-                # Isso é uma simulação, não um mapa de iso-temperaturas
                 offset_lat = 0.01 * math.sin(i * math.pi / 4)
                 offset_lon = 0.01 * math.cos(i * math.pi / 4)
                 folium.CircleMarker(
@@ -300,7 +311,7 @@ def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_d
                     fill_opacity=0.7
                 ).add_to(temperature_layer)
 
-    # Reintroduzir camada de precipitação diária
+    # Camada de Precipitação Diária (próximos 7 dias)
     if weather_data and 'daily' in weather_data:
         precipitation_layer = folium.FeatureGroup(name='Precipitação Diária (Próx. 7 dias)', show=False).add_to(m)
         for i, precip in enumerate(weather_data['daily']['precipitation_sum'][:7]):
@@ -320,7 +331,7 @@ def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_d
 
     # Camada de Focos de Incêndio (Cluster)
     if fire_data is not None and not fire_data.empty and 'latitude' in fire_data.columns and 'longitude' in fire_data.columns:
-        fire_data = fire_data.head(200)
+        fire_data = fire_data.head(200) # Limitar para performance
         marker_cluster = plugins.MarkerCluster(name='Focos de Incêndio (últimos 7 dias)').add_to(m)
         for idx, row in fire_data.iterrows():
             folium.Marker(
@@ -329,16 +340,14 @@ def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_d
                 icon=folium.Icon(color='darkred', icon='fire', prefix='fa')
             ).add_to(marker_cluster)
     else:
-        # Adicionar um marcador ou texto se não houver dados de incêndio
-        fire_no_data_layer = folium.FeatureGroup(name='Sem Focos de Incêndio (7 dias)').add_to(m)
-        # Opcional: um marcador que diz "Sem focos"
-        # folium.Marker([latitude, longitude], popup="Nenhum foco de incêndio recente", icon=folium.Icon(color='green', icon='check', prefix='fa')).add_to(fire_no_data_layer)
+        # Adicionar uma camada vazia se não houver dados de incêndio para que o LayerControl apareça
+        folium.FeatureGroup(name='Sem Focos de Incêndio (7 dias)').add_to(m)
 
-    # Camada de Qualidade do Ar (pontos coloridos por nível, mais genérico)
+
+    # Camada de Qualidade do Ar (ponto colorido para o valor mais recente)
     if air_quality_data and air_quality_data.get('hourly'):
         aq_layer = folium.FeatureGroup(name='Qualidade do Ar (PM2.5)', show=False).add_to(m)
         if air_quality_data['hourly']['time']:
-            # Pega o dado mais recente para mostrar como um ponto na localização da cidade
             last_idx = -1 # Último valor
             pm25 = air_quality_data['hourly']['pm2_5'][last_idx] if air_quality_data['hourly']['pm2_5'] else None
             aq_time = air_quality_data['hourly']['time'][last_idx]
@@ -354,15 +363,15 @@ def create_weather_map(latitude, longitude, city_name, weather_data=None, fire_d
                     tooltip="Qualidade do Ar (PM2.5)"
                 ).add_to(aq_layer)
 
-    # Adicionar controles de camadas
+    # Adicionar controles de camadas para o usuário poder alternar
     folium.LayerControl().add_to(m)
 
     plugins.Fullscreen(position='topright').add_to(m)
     plugins.MiniMap(position='bottomright').add_to(m)
     return m
 
-
 def generate_pdf_report(report):
+    """Gera um PDF do laudo técnico usando FPDF."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -408,6 +417,7 @@ def generate_pdf_report(report):
     return pdf_content
 
 def save_report_to_db(city, event_date, report_type, pdf_content):
+    """Salva o laudo no banco de dados SQLite."""
     conn = sqlite3.connect('weather_reports.db')
     c = conn.cursor()
     c.execute("INSERT INTO reports (city, date, event_date, report_type, pdf_content) VALUES (?, ?, ?, ?, ?)",
@@ -416,6 +426,7 @@ def save_report_to_db(city, event_date, report_type, pdf_content):
     conn.close()
 
 def get_reports_from_db():
+    """Recupera todos os laudos do banco de dados."""
     conn = sqlite3.connect('weather_reports.db')
     c = conn.cursor()
     c.execute("SELECT id, city, date, event_date, report_type FROM reports ORDER BY created_at DESC")
@@ -424,6 +435,7 @@ def get_reports_from_db():
     return reports
 
 def get_pdf_from_db(report_id):
+    """Recupera o conteúdo PDF de um laudo específico."""
     conn = sqlite3.connect('weather_reports.db')
     c = conn.cursor()
     c.execute("SELECT pdf_content FROM reports WHERE id=?", (report_id,))
@@ -432,6 +444,7 @@ def get_pdf_from_db(report_id):
     return pdf_content
 
 def generate_technical_report(event_data, city_data, satellite_images=None):
+    """Gera um laudo técnico para eventos extremos."""
     report = {
         'title': f"Laudo Técnico de Evento Climático Extremo - {city_data['name']}",
         'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -462,6 +475,7 @@ def generate_technical_report(event_data, city_data, satellite_images=None):
 
 # --- FUNÇÕES DE EXIBIÇÃO ---
 def show_current_weather(city_data, weather_data, fire_data=None, air_quality_data=None):
+    """Exibe as condições climáticas atuais e um mapa interativo."""
     st.header(f"⏱️ Condições Atuais em {city_data['name']}")
 
     col1, col2 = st.columns([2, 1])
@@ -476,7 +490,7 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
         cols_metrics[2].metric("🌬️ Vento", f"{current['wind_speed_10m']} km/h", f"Dir: {current['wind_direction_10m']}°")
 
         cols_metrics_2 = st.columns(3)
-        cols_metrics_2[0].metric("🌧️ Precipitação", f"{current['precipitation']} mm")
+        cols_metrics_2[0].metric("🌧️ Precipitação (1h)", f"{current['precipitation']} mm")
         cols_metrics_2[1].metric("📌 Condição", WEATHER_CODES.get(current['weather_code'], "Desconhecido"))
         uv_index = current.get('uv_index')
         cols_metrics_2[2].metric("☀️ Índice UV", f"{uv_index}" if uv_index is not None else "N/A")
@@ -509,6 +523,7 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
             }
 
 def show_weekly_forecast(city_data, weather_data):
+    """Exibe a previsão do tempo para os próximos 7 dias."""
     st.header(f"📅 Previsão para 7 Dias em {city_data['name']}")
     if "daily" in weather_data:
         daily = weather_data["daily"]
@@ -523,8 +538,9 @@ def show_weekly_forecast(city_data, weather_data):
             "Direção Vento": daily["wind_direction_10m_dominant"],
             "Índice UV Máx": daily.get("uv_index_max", [None]*len(dates)),
             "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]]
-        }).head(7)
+        }).head(7) # Limita a 7 dias explicitamente
 
+        # Gráfico de linhas com Plotly para temperaturas
         fig_temp = px.line(df, x="Data", y=["Máxima (°C)", "Mínima (°C)"],
                            title="Temperaturas Diárias",
                            labels={"value": "Temperatura (°C)", "variable": "Tipo de Temperatura"},
@@ -533,6 +549,7 @@ def show_weekly_forecast(city_data, weather_data):
         fig_temp.update_layout(hovermode="x unified", legend_title_text="")
         st.plotly_chart(fig_temp, use_container_width=True)
 
+        # Gráfico de barras para precipitação
         fig_precip = px.bar(df, x="Data", y="Precipitação (mm)",
                             title="Precipitação Diária",
                             labels={"Precipitação (mm)": "Volume (mm)"},
@@ -549,12 +566,16 @@ def show_weekly_forecast(city_data, weather_data):
                 st.write(f"- **{event['date']}**: {', '.join(event['events'])}")
 
 def show_extended_forecast(city_data, weather_data):
+    """Exibe a previsão do tempo estendida (até 16 dias)."""
     st.header(f"📊 Previsão Estendida para 16 Dias em {city_data['name']}")
     st.info("Esta é a previsão máxima disponível na API Open-Meteo")
 
     if "daily" in weather_data:
         daily = weather_data["daily"]
         dates = pd.to_datetime(daily["time"])
+
+        # Adicione esta linha para verificar o número de dias que a API retornou
+        st.write(f"**A API retornou dados para {len(dates)} dias.**")
 
         df = pd.DataFrame({
             "Data": dates,
@@ -566,22 +587,23 @@ def show_extended_forecast(city_data, weather_data):
             "Índice UV Máx": daily.get("uv_index_max", [None]*len(dates)),
             "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]]
         })
+        # Não há .head() ou slicing aqui, então todos os dias recebidos serão plotados.
 
         tab1, tab2, tab3, tab4 = st.tabs(["Temperaturas", "Precipitação", "Ventos", "UV e Condição"])
 
         with tab1:
             fig_temp_ext = px.line(df, x="Data", y=["Máxima (°C)", "Mínima (°C)"],
-                                   title="Temperaturas (16 Dias)", line_shape="spline")
+                                   title="Temperaturas (Até 16 Dias)", line_shape="spline")
             st.plotly_chart(fig_temp_ext, use_container_width=True)
 
         with tab2:
             fig_precip_ext = px.bar(df, x="Data", y="Precipitação (mm)",
-                                    title="Precipitação Acumulada (16 Dias)")
+                                    title="Precipitação Acumulada (Até 16 Dias)")
             st.plotly_chart(fig_precip_ext, use_container_width=True)
 
         with tab3:
             fig_wind_ext = px.bar(df, x="Data", y="Vento Máx (km/h)",
-                                  title="Velocidade Máxima do Vento (16 Dias)")
+                                  title="Velocidade Máxima do Vento (Até 16 Dias)")
             st.plotly_chart(fig_wind_ext, use_container_width=True)
 
         with tab4:
@@ -591,6 +613,7 @@ def show_extended_forecast(city_data, weather_data):
 
 
 def show_extreme_events(city_data, weather_data):
+    """Monitora e exibe eventos climáticos extremos históricos."""
     st.header("⚠️ Monitoramento de Eventos Extremos")
 
     end_date = datetime.now().strftime("%Y-%m-%d")
@@ -611,12 +634,10 @@ def show_extreme_events(city_data, weather_data):
                     for e in event['events']:
                         st.write(f"- 🔥 {e}")
 
-                    # Mapa para o evento extremo
+                    # Mapa contextual para o evento (sem dados de clima para não sobrecarregar)
                     event_map = create_weather_map(
                         city_data["latitude"], city_data["longitude"], city_data["name"],
-                        weather_data=None, # Não temos dados horários/precipitação para o histórico, passamos None para não tentar adicionar
-                        fire_data=None,
-                        air_quality_data=None
+                        weather_data=None, fire_data=None, air_quality_data=None # Foca no ponto do evento
                     )
                     folium.Marker(
                         location=[city_data["latitude"], city_data["longitude"]],
@@ -663,6 +684,7 @@ def show_extreme_events(city_data, weather_data):
         st.error("❌ Não foi possível obter dados históricos para análise")
 
 def show_reports_section():
+    """Exibe e permite o download de laudos técnicos armazenados."""
     st.header("📂 Laudos Técnicos Armazenados")
     reports = get_reports_from_db()
     if reports:
@@ -686,9 +708,9 @@ def show_reports_section():
 
 @st.cache_data(ttl=600) # Cache por 10 minutos
 def get_fire_data(latitude, longitude, radius_km=100, days_back=7):
+    """Obtém dados de focos de incêndio próximos à localização."""
     try:
         delta_lat = radius_km / 111.32
-        # É importante ajustar o delta de longitude pela latitude para uma área mais próxima de um círculo
         delta_lon = radius_km / (111.32 * abs(math.cos(math.radians(latitude)))) if latitude != 0 else delta_lat
 
         min_lat = latitude - delta_lat
@@ -696,7 +718,7 @@ def get_fire_data(latitude, longitude, radius_km=100, days_back=7):
         min_lon = longitude - delta_lon
         max_lon = longitude + delta_lon
 
-        area = f"{min_lat},{min_lon},{max_lat},{max_lon}"
+        area = f"{min_lat},{min_lon},{max_lat},{max_lon}" # Formato latitude_min,longitude_min,latitude_max,longitude_max
         date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
         url = NASA_FIRMS_API.format(
@@ -709,8 +731,8 @@ def get_fire_data(latitude, longitude, radius_km=100, days_back=7):
         response.raise_for_status()
 
         if response.text.strip():
-            # A API FIRMS CSV retorna headers, então read_csv direto deve funcionar
             df = pd.read_csv(StringIO(response.text))
+            # Padronizar nomes de colunas para uso no código
             df.rename(columns={'latitude': 'latitude', 'longitude': 'longitude', 'acq_date': 'acq_date', 'confidence': 'confidence'}, inplace=True)
             return df
         return pd.DataFrame()
@@ -723,6 +745,7 @@ def get_fire_data(latitude, longitude, radius_km=100, days_back=7):
         return pd.DataFrame()
 
 def show_fire_data(city_data):
+    """Exibe informações e mapa de focos de incêndio."""
     st.header("🔥 Monitoramento de Focos de Incêndio")
     st.info("Mostra focos de incêndio dos últimos 7 dias em um raio de 100km.")
 
@@ -753,6 +776,7 @@ def show_fire_data(city_data):
 
 
 def show_air_quality_data(city_data):
+    """Exibe dados de qualidade do ar."""
     st.header("🌬️ Qualidade do Ar")
     aq_data = get_air_quality_data(city_data["latitude"], city_data["longitude"])
 
@@ -827,6 +851,11 @@ def main():
     # Inicializa st.session_state.current_city_search se não existir
     if 'current_city_search' not in st.session_state:
         st.session_state.current_city_search = ""
+    if 'current_city_display' not in st.session_state:
+        st.session_state.current_city_display = ""
+    if 'current_location_coords' not in st.session_state:
+        st.session_state.current_location_coords = None
+
 
     col1, col2 = st.columns([3, 1])
 
@@ -837,83 +866,72 @@ def main():
                                        placeholder="Ex: São Paulo, Rio de Janeiro")
 
     with col2:
-        st.write("")
+        st.write("") # Espaçamento para alinhar o botão
         st.write("")
         if st.button("📍 Usar Minha Localização",
                      help="Clique e permita o acesso à localização no seu navegador",
                      key="get_location_button"):
-            st.session_state.trying_location = True
-            st.session_state.current_city_search = "" # Limpa a busca manual
+            # Set a flag to trigger the JS for geolocation
+            st.session_state.trigger_geolocation = True
+            # Limpa o input de texto para mostrar que a localização está sendo usada
+            st.session_state.current_city_search = ""
+            st.session_state.current_city_display = "" # Limpa o display
+            st.session_state.current_location_coords = None # Zera as coords
+            # Streamlit fará um rerun após a interação do botão
+
 
     # Componente de geolocalização (JavaScript)
-    # Este script é executado no navegador do cliente
-    st.markdown(f"""
+    # Este script roda no navegador do cliente para obter a localização.
+    # Ele usa `postMessage` para enviar os dados de volta para o Streamlit.
+    # A variável `st.session_state.trigger_geolocation` é usada para controlar quando o JS deve ser ativado.
+    geolocation_script = f"""
     <script>
     if (navigator.geolocation && window.parent) {{
-        // Verifica se o Streamlit realmente solicitou a localização via session_state
-        // Esta é uma suposição de como o StreamlitComponentValue poderia ser acessado no futuro.
-        // Por enquanto, o button acima já força o rerun, e a lógica de reruns trata.
-        // A maneira mais confiável de acionar seria com um componente customizado real do Streamlit.
-        // Para este exemplo, apenas garantimos que getCurrentPosition é chamado quando o botão é clicado.
-        navigator.geolocation.getCurrentPosition(
-            function(position) {{
-                const lat = position.coords.latitude;
-                const lon = position.coords.longitude;
-                const message = `Minha Localização,${{lat}},${{lon}}`;
-                // Envia a localização de volta para o Streamlit
-                window.parent.postMessage({{
-                    streamlit: {{
-                        setComponentValue: (key, value) => {{
-                            if (key === 'user_location') {{
-                                Streamlit.setComponentValue(key, value);
-                            }}
-                        }}
-                    }},
-                    type: 'streamlit:setComponentValue',
-                    key: 'user_location',
-                    value: message
-                }}, '*');
-            }},
-            function(error) {{
-                let errorMessage;
-                switch(error.code) {{
-                    case error.PERMISSION_DENIED:
-                        errorMessage = "Acesso à localização negado pelo usuário.";
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        errorMessage = "Informações de localização não disponíveis.";
-                        break;
-                    case error.TIMEOUT:
-                        errorMessage = "Tempo limite para obter localização excedido.";
-                        break;
-                    default:
-                        errorMessage = "Erro desconhecido ao obter localização.";
-                }}
-                window.parent.postMessage({{
-                    streamlit: {{
-                        setComponentValue: (key, value) => {{
-                            if (key === 'location_error') {{
-                                Streamlit.setComponentValue(key, value);
-                            }}
-                        }}
-                    }},
-                    type: 'streamlit:setComponentValue',
-                    key: 'location_error',
-                    value: errorMessage
-                }}, '*');
-            }},
-            {{enableHighAccuracy: true, timeout: 10000, maximumAge: 0}}
-        );
+        // Check if the Python backend explicitly requested geolocation
+        const streamlit_app_ready = typeof Streamlit !== 'undefined';
+        const trigger_geolocation = {str(st.session_state.get('trigger_geolocation', False)).lower()};
+
+        if (streamlit_app_ready && trigger_geolocation) {{
+            // Reset the trigger in session_state immediately
+            Streamlit.setComponentValue('trigger_geolocation', false);
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {{
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    const message = `Minha Localização,${{lat}},${{lon}}`;
+                    // Send location back to Streamlit
+                    Streamlit.setComponentValue('user_location_result', message);
+                }},
+                function(error) {{
+                    let errorMessage;
+                    switch(error.code) {{
+                        case error.PERMISSION_DENIED:
+                            errorMessage = "Acesso à localização negado pelo usuário. Por favor, permita no navegador.";
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage = "Informações de localização não disponíveis.";
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage = "Tempo limite para obter localização excedido.";
+                            break;
+                        default:
+                            errorMessage = "Erro desconhecido ao obter localização.";
+                    }}
+                    Streamlit.setComponentValue('location_error_message', errorMessage);
+                }},
+                {{enableHighAccuracy: true, timeout: 10000, maximumAge: 0}}
+            );
+        }}
     }}
     </script>
-    """, unsafe_allow_html=True)
+    """
+    st.components.v1.html(geolocation_script, height=0)
 
 
-    # Processar resposta da geolocalização
-    # st.experimental_rerun() não existe mais no Streamlit 1.x
-    # O Streamlit atualiza automaticamente quando o session_state muda.
-    if st.session_state.get('user_location'):
-        parts = st.session_state.user_location.split(',')
+    # Processar resposta da geolocalização (se houver um resultado do JS)
+    if st.session_state.get('user_location_result'):
+        parts = st.session_state.user_location_result.split(',')
         lat = float(parts[1])
         lon = float(parts[2])
 
@@ -939,38 +957,44 @@ def main():
 
         st.session_state.current_location_coords = {"lat": lat, "lon": lon}
         st.session_state.current_city_search = st.session_state.current_city_display # Atualiza o campo de busca
-        st.session_state.pop('user_location') # Limpar para evitar re-execução desnecessária
+        st.session_state.pop('user_location_result') # Limpar para evitar re-execução desnecessária
 
-    if st.session_state.get('location_error'):
-        st.warning(st.session_state.location_error)
-        st.session_state.pop('location_error')
+
+    if st.session_state.get('location_error_message'):
+        st.warning(st.session_state.location_error_message)
+        st.session_state.pop('location_error_message')
 
 
     selected_city_data = None
     if st.session_state.get('current_location_coords'):
-        # Prioriza a localização automática se foi detectada
+        # Se a localização foi obtida por geolocalização, priorize-a
         selected_city_data = {
             "name": st.session_state.get('current_city_display', "Minha Localização"),
             "latitude": st.session_state.current_location_coords["lat"],
             "longitude": st.session_state.current_location_coords["lon"],
-            "admin1": "", "country": "" # Podem ser preenchidos pela busca reversa
+            "admin1": "", "country": "" # Estes podem ser preenchidos por busca reversa completa
         }
-        st.info(f"Mostrando clima para: **{selected_city_data['name']}**")
+        # Não é necessário um st.info aqui se já está no campo de busca.
     elif city_name_input:
+        # Se o usuário digitou uma cidade, busque por ela
         city_options = get_city_options(city_name_input)
         if city_options:
             options_display = [f"{city['name']}, {city.get('admin1', '')}, {city.get('country', '')} (Lat: {city['latitude']:.2f}, Lon: {city['longitude']:.2f})" for city in city_options]
+            # Usamos o `key` para que o selectbox seja re-renderizado corretamente com as opções
             selected_option = st.selectbox(
-                "Selecione a localidade correta:",
+                "📍 Selecione a localidade correta:",
                 options_display,
-                key="city_selection_box"
+                key="city_selection_box",
+                index=0 # Seleciona a primeira opção por padrão
             )
             selected_index = options_display.index(selected_option)
             selected_city_data = city_options[selected_index]
         else:
             st.warning("Nenhuma cidade encontrada com esse nome. Tente novamente ou use a localização automática.")
 
+
     if selected_city_data:
+        # Pega os dados de clima da cidade selecionada/detectada
         weather_data = get_weather_data(
             selected_city_data["latitude"],
             selected_city_data["longitude"],
