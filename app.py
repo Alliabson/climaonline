@@ -160,7 +160,7 @@ h1, h2, h3, h4, h5, h6 {
     padding: 10px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin: 5px;
+    margin: 5px; /* Adiciona margem entre os cartões */
     display: flex; /* Usar flexbox para alinhamento e tamanho */
     flex-direction: column; /* Conteúdo em coluna */
     justify-content: space-between; /* Espaçamento entre itens */
@@ -168,7 +168,6 @@ h1, h2, h3, h4, h5, h6 {
     min-width: 120px; /* Largura mínima do cartão */
     max-width: 150px; /* Largura máxima para não ficar muito largo */
     height: 160px; /* Altura fixa para uniformidade */
-    vertical-align: top; /* Alinha no topo quando inline-flex */
     box-sizing: border-box; /* Inclui padding e border na largura/altura */
 }
 .hourly-card .time {
@@ -203,6 +202,7 @@ h1, h2, h3, h4, h5, h6 {
     flex-wrap: nowrap; /* Impede que os itens quebrem linha */
     padding-bottom: 10px; /* Espaço para o scrollbar */
     gap: 10px; /* Espaçamento entre os cartões */
+    margin-bottom: 20px; /* Espaço após o container de cartões */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -272,7 +272,7 @@ def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
     params = {
         "latitude": latitude, "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
-        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure", # Added surface_pressure for more data
+        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset",
         "timezone": timezone,
         "forecast_days": forecast_days
@@ -619,7 +619,7 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
 
 def show_hourly_forecast(city_data, weather_data):
     """Exibe a previsão horária do tempo."""
-    st.header(f" hourly_forecast Previsão Horária em {city_data['name']}")
+    st.header(f"Previsão de acordo com o Horário em {city_data['name']}") # Título corrigido
 
     if "hourly" in weather_data:
         hourly = weather_data["hourly"]
@@ -656,7 +656,7 @@ def show_hourly_forecast(city_data, weather_data):
 
             st.write("### Detalhes Horários:")
             # Gera os cartões como uma única string HTML para rolagem horizontal
-            hourly_cards_html = ""
+            hourly_cards_html_content = "" # Variável para acumular o HTML de todos os cartões
             for idx, row in df_hourly.iterrows():
                 time_display = row['Hora'].strftime("%H:%M")
                 date_display = row['Hora'].strftime("%d/%m")
@@ -666,7 +666,7 @@ def show_hourly_forecast(city_data, weather_data):
                 else:
                     time_info = time_display
                 
-                hourly_cards_html += f"""
+                hourly_cards_html_content += f"""
                 <div class="hourly-card">
                     <div class="time">{time_info}</div>
                     <div class="icon">{row['Ícone']}</div>
@@ -675,8 +675,8 @@ def show_hourly_forecast(city_data, weather_data):
                     <div>{row['Precipitação (mm)']}mm</div>
                 </div>
                 """
-            # Renderiza o container e todos os cartões de uma vez, permitindo HTML
-            st.markdown(f'<div class="hourly-card-container">{hourly_cards_html}</div>', unsafe_allow_html=True)
+            # Renderiza o container principal com o HTML acumulado de todos os cartões
+            st.markdown(f'<div class="hourly-card-container">{hourly_cards_html_content}</div>', unsafe_allow_html=True)
 
         else:
             st.info("Nenhum dado de previsão horária disponível para as próximas 48 horas.")
@@ -1171,7 +1171,7 @@ def main():
 
         if weather_data:
             tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-                "⏱️ Atual", " hourly_forecast Horário", "📅 7 Dias", "📊 16 Dias",
+                "⏱️ Atual", "Previsão Horária", "📅 7 Dias", "📊 16 Dias", # Título da aba corrigido aqui
                 "⚠️ Eventos Extremos", "🔥 Focos de Incêndio", "🌬️ Qualidade do Ar"
             ])
 
