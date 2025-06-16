@@ -1,0 +1,7 @@
+# .streamlit/config.toml
+[theme]
+primaryColor="#1E88E5" # Azul do Streamlit
+backgroundColor="#F0F2F6" # Fundo claro
+secondaryBackgroundColor="#FFFFFF" # Fundo dos containers
+textColor="#262730" # Cor do texto
+font="sans serif"
