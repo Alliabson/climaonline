@@ -161,7 +161,7 @@ h1, h2, h3, h4, h5, h6 {
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     margin: 5px;
-    display: inline-flex; /* Usar flexbox para alinhamento e tamanho */
+    display: flex; /* Usar flexbox para alinhamento e tamanho */
     flex-direction: column; /* Conteúdo em coluna */
     justify-content: space-between; /* Espaçamento entre itens */
     align-items: center; /* Centralizar horizontalmente */
@@ -192,7 +192,7 @@ h1, h2, h3, h4, h5, h6 {
     white-space: normal; /* Permite que o texto quebre linha */
     text-align: center;
     flex-grow: 1; /* Permite que o texto de condição use o espaço disponível */
-    display: -webkit-box;
+    display: -webkit-box; /* Para compatibilidade com webkit (Chrome/Safari) */
     -webkit-line-clamp: 2; /* Limita a 2 linhas */
     -webkit-box-orient: vertical;
     overflow: hidden;
@@ -272,7 +272,7 @@ def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
     params = {
         "latitude": latitude, "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
-        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure", # Added surface_pressure for more data
+        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset",
         "timezone": timezone,
         "forecast_days": forecast_days
@@ -675,7 +675,7 @@ def show_hourly_forecast(city_data, weather_data):
                     <div>{row['Precipitação (mm)']}mm</div>
                 </div>
                 """
-            # Renderiza o container e todos os cartões de uma vez
+            # Renderiza o container e todos os cartões de uma vez, permitindo HTML
             st.markdown(f'<div class="hourly-card-container">{hourly_cards_html}</div>', unsafe_allow_html=True)
 
         else:
@@ -1036,7 +1036,7 @@ def main():
                                        placeholder="Ex: São Paulo, Rio de Janeiro")
 
     with col2:
-        st.write("")
+        st.write("") # Espaçamento para alinhar o botão
         st.write("")
         if st.button("📍 Usar Minha Localização",
                      help="Clique e permita o acesso à localização no seu navegador",
