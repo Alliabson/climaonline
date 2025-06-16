@@ -13,7 +13,8 @@ import os
 from functools import partial
 from dotenv import load_dotenv
 import plotly.express as px
-import math # Importar math para o cálculo da longitude no get_fire_data
+import plotly.graph_objects as go # Importar para gráficos mais customizados
+import math
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -154,56 +155,9 @@ h1, h2, h3, h4, h5, h6 {
     opacity: 0.8;
 }
 
-/* Estilo para cartões de previsão horária */
-.hourly-card {
-    background-color: white;
-    padding: 10px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin: 5px; /* Adiciona margem entre os cartões */
-    display: flex; /* Usar flexbox para alinhamento e tamanho */
-    flex-direction: column; /* Conteúdo em coluna */
-    justify-content: space-between; /* Espaçamento entre itens */
-    align-items: center; /* Centralizar horizontalmente */
-    min-width: 120px; /* Largura mínima do cartão */
-    max-width: 150px; /* Largura máxima para não ficar muito largo */
-    height: 160px; /* Altura fixa para uniformidade */
-    box-sizing: border-box; /* Inclui padding e border na largura/altura */
-}
-.hourly-card .time {
-    font-weight: bold;
-    font-size: 1.1em;
-    color: #1E88E5;
-    white-space: nowrap; /* Mantém a hora na mesma linha */
-}
-.hourly-card .temp {
-    font-size: 1.3em;
-    font-weight: bold;
-    margin: 5px 0;
-}
-.hourly-card .icon {
-    font-size: 2em; /* Ícone maior */
-    margin-bottom: 5px;
-}
-.hourly-card .condition {
-    font-size: 0.9em;
-    color: #555;
-    white-space: normal; /* Permite que o texto quebre linha */
-    text-align: center;
-    flex-grow: 1; /* Permite que o texto de condição use o espaço disponível */
-    display: -webkit-box; /* Para compatibilidade com webkit (Chrome/Safari) */
-    -webkit-line-clamp: 2; /* Limita a 2 linhas */
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-.hourly-card-container {
-    overflow-x: auto; /* Permite scroll horizontal */
-    display: flex; /* Usar flexbox para o container de cartões */
-    flex-wrap: nowrap; /* Impede que os itens quebrem linha */
-    padding-bottom: 10px; /* Espaço para o scrollbar */
-    gap: 10px; /* Espaçamento entre os cartões */
-    margin-bottom: 20px; /* Espaço após o container de cartões */
-}
+/* Remover estilos de hourly-card e hourly-card-container,
+   pois o Plotly fará a visualização integrada */
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -628,58 +582,159 @@ def show_hourly_forecast(city_data, weather_data):
         df_hourly = pd.DataFrame({
             "Hora": hourly_times,
             "Temperatura (°C)": hourly["temperature_2m"],
+            "Sensação Térmica (°C)": hourly.get("apparent_temperature", hourly["temperature_2m"]),
             "Precipitação (mm)": hourly["precipitation"],
             "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in hourly["weather_code"]],
             "Ícone": [WEATHER_ICONS.get(code, "❓") for code in hourly["weather_code"]],
-            "Vento (km/h)": hourly["wind_speed_10m"]
+            "Vento (km/h)": hourly["wind_speed_10m"],
+            "Código Condição": hourly["weather_code"]
         })
 
         df_hourly = df_hourly[df_hourly['Hora'] >= datetime.now()].head(48).reset_index(drop=True)
 
         if not df_hourly.empty:
-            st.subheader("Gráficos de Tendência Horária")
-            # Gráfico de linhas para temperatura horária
-            fig_temp_hourly = px.line(df_hourly, x="Hora", y="Temperatura (°C)",
-                                      title="Temperatura Horária",
-                                      labels={"Temperatura (°C)": "Temperatura"},
-                                      line_shape="spline",
-                                      color_discrete_sequence=["#FF7F00"])
-            fig_temp_hourly.update_layout(hovermode="x unified")
-            st.plotly_chart(fig_temp_hourly, use_container_width=True)
+            st.subheader("Visão Geral Horária")
 
-            # Gráfico de barras para precipitação horária
-            fig_precip_hourly = px.bar(df_hourly, x="Hora", y="Precipitação (mm)",
-                                       title="Precipitação Horária",
-                                       labels={"Precipitação (mm)": "Volume (mm)"},
-                                       color_discrete_sequence=["#2E8B57"])
-            st.plotly_chart(fig_precip_hourly, use_container_width=True)
+            # --- Criação do Gráfico Estilizado com Plotly ---
+            fig_hourly_stylized = go.Figure()
 
-            st.write("### Detalhes Horários:")
-            # Gera os cartões como uma única string HTML para rolagem horizontal
-            hourly_cards_html_content = "" # Variável para acumular o HTML de todos os cartões
-            for idx, row in df_hourly.iterrows():
-                time_display = row['Hora'].strftime("%H:%M")
-                date_display = row['Hora'].strftime("%d/%m")
-                # Adiciona a data no cartão se for a primeira hora ou se o dia mudou
-                if idx == 0 or row['Hora'].day != df_hourly['Hora'].iloc[idx-1].day:
-                    time_info = f"<div style='font-size:0.8em; opacity:0.7;'>{date_display}</div>{time_display}"
-                else:
-                    time_info = time_display
+            # Adicionar a linha/área de temperatura
+            fig_hourly_stylized.add_trace(go.Scatter(
+                x=df_hourly['Hora'],
+                y=df_hourly['Temperatura (°C)'],
+                mode='lines+markers',
+                name='Temperatura',
+                line=dict(color='#FF7F00', width=3),
+                fill='tozeroy',
+                fillcolor='rgba(255, 127, 0, 0.2)',
+                hovertemplate="<b>Hora:</b> %{x|%H:%M}<br><b>Temp:</b> %{y}°C<br><b>Condição:</b> %{customdata[0]}<extra></extra>",
+                customdata=df_hourly[['Condição', 'Precipitação (mm)', 'Ícone']]
+            ))
+
+            # Adicionar anotações para cada ponto (hora, ícone, temperatura)
+            annotations = []
+            for i, row in df_hourly.iterrows():
+                date_label = ""
+                # Current date is Monday, June 16, 2025.
+                # Assuming df_hourly['Hora'] is always in the future relative to now.
+                # Adjusting weekday abbreviations for pt-br
+                weekday_map = {"Mon": "seg", "Tue": "ter", "Wed": "qua", "Thu": "qui", "Fri": "sex", "Sat": "sáb", "Sun": "dom"}
                 
-                hourly_cards_html_content += f"""
-                <div class="hourly-card">
-                    <div class="time">{time_info}</div>
-                    <div class="icon">{row['Ícone']}</div>
-                    <div class="temp">{row['Temperatura (°C)']}°C</div>
-                    <div class="condition">{row['Condição']}</div>
-                    <div>{row['Precipitação (mm)']}mm</div>
-                </div>
-                """
-            # Renderiza o container principal com o HTML acumulado de todos os cartões
-            # **********************************************************************
-            # CORREÇÃO CRÍTICA AQUI: Usando st.components.v1.html para forçar a renderização HTML
-            # **********************************************************************
-            st.components.v1.html(f'<div class="hourly-card-container">{hourly_cards_html_content}</div>', height=200, scrolling=True)
+                # Show date if it's the first point or a new day
+                if i == 0 or (i > 0 and row['Hora'].date() != df_hourly['Hora'].iloc[i-1].date()):
+                    # Get the weekday abbreviation from pandas datetime.strftime('%a')
+                    # And then map it to the Portuguese abbreviation
+                    day_abbr = weekday_map.get(row['Hora'].strftime("%a"), row['Hora'].strftime("%a"))
+                    date_label = f"{day_abbr}. {row['Hora'].day}<br>"
+
+                annotations.append(
+                    dict(
+                        x=row['Hora'],
+                        y=row['Temperatura (°C)'] + 5, # Posição acima do ponto (ajustar conforme escala)
+                        xref="x",
+                        yref="y",
+                        text=f"{date_label}{row['Hora'].strftime('%H:%M')}<br>{row['Ícone']}<br><b>{row['Temperatura (°C)']}°C</b>",
+                        showarrow=False,
+                        xanchor='center',
+                        yanchor='bottom',
+                        font=dict(size=12, color="black"),
+                        align="center"
+                    )
+                )
+                
+                # Adicionar anotação de precipitação na parte inferior (se houver precipitação)
+                if row['Precipitação (mm)'] > 0:
+                    annotations.append(
+                        dict(
+                            x=row['Hora'],
+                            y=fig_hourly_stylized.layout.yaxis.range[0] + 3, # Posição na parte inferior (ajustar)
+                            xref="x",
+                            yref="y",
+                            text=f"💧{row['Precipitação (mm)']}mm",
+                            showarrow=False,
+                            xanchor='center',
+                            yanchor='top',
+                            font=dict(size=10, color="blue")
+                        )
+                    )
+            
+            # Adicionar o Nascer e Pôr do Sol como anotações no gráfico
+            if weather_data and "daily" in weather_data:
+                daily_data = weather_data["daily"]
+                
+                # Iterar sobre os dias disponíveis na previsão diária
+                for day_idx in range(len(daily_data['time'])):
+                    # Obter nascer e pôr do sol para cada dia
+                    sunrise_time = pd.to_datetime(daily_data['sunrise'][day_idx])
+                    sunset_time = pd.to_datetime(daily_data['sunset'][day_idx])
+
+                    # Adiciona o Nascer do Sol se estiver dentro do período do gráfico
+                    if sunrise_time >= df_hourly['Hora'].min() and sunrise_time <= df_hourly['Hora'].max():
+                        annotations.append(
+                            dict(
+                                x=sunrise_time,
+                                y=fig_hourly_stylized.layout.yaxis.range[0] + 1, # Ajustar posição vertical
+                                xref="x",
+                                yref="y",
+                                text="☀️ Nascer do Sol",
+                                showarrow=False,
+                                xanchor='center',
+                                yanchor='top',
+                                font=dict(size=10, color="orange")
+                            )
+                        )
+                    
+                    # Adiciona o Pôr do Sol se estiver dentro do período do gráfico
+                    if sunset_time >= df_hourly['Hora'].min() and sunset_time <= df_hourly['Hora'].max():
+                        annotations.append(
+                            dict(
+                                x=sunset_time,
+                                y=fig_hourly_stylized.layout.yaxis.range[0] + 1, # Ajustar posição vertical
+                                xref="x",
+                                yref="y",
+                                text="🌙 Pôr do Sol",
+                                showarrow=False,
+                                xanchor='center',
+                                yanchor='top',
+                                font=dict(size=10, color="purple")
+                            )
+                        )
+
+            fig_hourly_stylized.update_layout(
+                title=dict(text=f"Previsão Horária para {city_data['name']}", x=0.5),
+                xaxis_title="",
+                yaxis_title="Temperatura (°C)",
+                hovermode="x unified",
+                annotations=annotations,
+                showlegend=False,
+                xaxis=dict(
+                    rangeselector=None,
+                    rangeslider=dict(visible=True, thickness=0.05),
+                    type="date",
+                    tickformat="%H:%M",
+                    dtick="H1",
+                ),
+                yaxis=dict(
+                    range=[df_hourly['Temperatura (°C)'].min() - 5, df_hourly['Temperatura (°C)'].max() + 10]
+                ),
+                margin=dict(l=40, r=40, t=80, b=40),
+                height=400
+            )
+
+            # Toggle para Sensação Térmica
+            show_feels_like = st.checkbox("Mostrar Sensação Térmica", key="hourly_feels_like_toggle")
+            if show_feels_like:
+                fig_hourly_stylized.add_trace(go.Scatter(
+                    x=df_hourly['Hora'],
+                    y=df_hourly['Sensação Térmica (°C)'],
+                    mode='lines',
+                    name='Sensação Térmica',
+                    line=dict(color='#8B4513', width=2, dash='dot'),
+                    hovertemplate="<b>Hora:</b> %{x|%H:%M}<br><b>Sensação:</b> %{y}°C<extra></extra>"
+                ))
+                fig_hourly_stylized.update_layout(showlegend=True)
+
+            st.plotly_chart(fig_hourly_stylized, use_container_width=True)
 
         else:
             st.info("Nenhum dado de previsão horária disponível para as próximas 48 horas.")
