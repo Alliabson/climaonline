@@ -13,33 +13,29 @@ import os
 from functools import partial
 from dotenv import load_dotenv
 import plotly.express as px
-import plotly.graph_objects as go # Importar para gráficos mais customizados
+import plotly.graph_objects as go
 import math
 
 # Carregar variáveis de ambiente
 load_dotenv()
-# Tente obter a chave da API da NASA de forma segura primeiro (ambiente ou secrets do Streamlit Cloud).
-# Se não estiver configurada, use a chave que você forneceu diretamente no código,
-# mas para produção, é fortemente recomendado usar variáveis de ambiente ou secrets.
 NASA_API_KEY = os.getenv("NASA_API_KEY", "de744659515921a11cf8cabac3dfed1e")
 NASA_FIRMS_API = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{api_key}/VIIRS_NOAA20_NRT/{area}/1/{date}"
 
 # --- CONFIGURAÇÃO DA PÁGINA E ESTILOS ---
 st.set_page_config(page_title="Previsão Climática Premium", layout="wide", initial_sidebar_state="expanded")
 
-# Injetar CSS personalizado para estilização similar ao app da Microsoft
 st.markdown("""
 <style>
 /* Estilos globais e de corpo */
 .stApp {
-    background-color: #F0F2F6; /* Cor de fundo suave */
+    background-color: #F0F2F6;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: #262730;
 }
 
 /* Título principal do aplicativo */
 .stTitle {
-    color: #1E88E5; /* Azul vibrante */
+    color: #1E88E5;
     text-align: center;
     margin-bottom: 30px;
     font-size: 2.5em;
@@ -52,30 +48,49 @@ h1, h2, h3, h4, h5, h6 {
     color: #1E88E5;
     margin-top: 1.5em;
     margin-bottom: 0.8em;
-    border-bottom: 2px solid rgba(30, 136, 229, 0.2); /* Linha sutil */
+    border-bottom: 2px solid rgba(30, 136, 229, 0.2);
     padding-bottom: 5px;
 }
 
-/* Cards/Métricas para informações atuais */
+/* Cards/Métricas para informações atuais e resumos */
 .stMetric {
     background-color: white;
     padding: 15px 20px;
     border-radius: 12px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Sombra mais pronunciada */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     margin-bottom: 15px;
-    transition: transform 0.2s; /* Efeito hover */
+    transition: transform 0.2s;
+    text-align: center; /* Centraliza o texto nos cartões de métrica */
 }
 .stMetric:hover {
     transform: translateY(-3px);
 }
+.stMetric label div { /* Ajusta o label superior da métrica */
+    font-size: 0.9em;
+    color: #555;
+    margin-bottom: 5px;
+}
+.stMetric div[data-testid="stMetricValue"] { /* Ajusta o valor principal da métrica */
+    font-size: 1.5em !important;
+    font-weight: bold;
+    color: #1E88E5;
+    margin-bottom: 5px;
+}
+.stMetric div[data-testid="stMetricDelta"] { /* Ajusta o delta da métrica (condição) */
+    font-size: 0.9em;
+    color: #333;
+    white-space: normal;
+    text-align: center;
+}
+
 
 /* Estilo para abas */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 15px; /* Espaçamento entre as abas */
+    gap: 15px;
 }
 .stTabs [data-baseweb="tab-list"] button {
     padding: 10px 20px;
-    background-color: #E0E0E0; /* Cor de fundo das abas inativas */
+    background-color: #E0E0E0;
     border-radius: 8px 8px 0 0;
     font-weight: bold;
     color: #555;
@@ -85,12 +100,12 @@ h1, h2, h3, h4, h5, h6 {
     background-color: #D0D0D0;
 }
 .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-    background-color: #1E88E5; /* Cor da aba selecionada */
+    background-color: #1E88E5;
     color: white;
     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] [data-testid="stMarkdownContainer"] p {
-    color: white; /* Cor do texto da aba selecionada */
+    color: white;
 }
 
 /* Estilo para botões */
@@ -131,7 +146,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Estilo para a sessão "hero" da temperatura atual */
 .current-weather-hero {
-    background-color: #1E88E5; /* Cor de fundo primária */
+    background-color: #1E88E5;
     color: white;
     padding: 30px;
     border-radius: 12px;
@@ -141,12 +156,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 .current-weather-hero h2 {
     color: white;
-    font-size: 4em; /* Temperatura maior */
+    font-size: 4em;
     margin: 0;
     line-height: 1.0;
 }
 .current-weather-hero p {
-    font-size: 1.5em; /* Condição maior */
+    font-size: 1.5em;
     margin-top: 5px;
     margin-bottom: 0;
 }
@@ -154,9 +169,6 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 1.2em;
     opacity: 0.8;
 }
-
-/* Remover estilos de hourly-card e hourly-card-container,
-   pois o Plotly fará a visualização integrada */
 
 </style>
 """, unsafe_allow_html=True)
@@ -226,7 +238,7 @@ def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
     params = {
         "latitude": latitude, "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
-        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure,apparent_temperature", # Added apparent_temperature for sensation
+        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure,apparent_temperature",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset",
         "timezone": timezone,
         "forecast_days": forecast_days
@@ -571,9 +583,12 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
             "lon": map_data["last_clicked"]["lng"]
         }
 
-def show_hourly_forecast(city_data, weather_data):
-    """Exibe a previsão horária do tempo como um gráfico estilizado."""
-    st.header(f"Previsão de acordo com o Horário em {city_data['name']}") # Título corrigido
+def show_hourly_summary_and_detailed_chart(city_data, weather_data):
+    """
+    Exibe uma visão geral horária com cartões de resumo
+    e um gráfico horário detalhado com filtro de dia.
+    """
+    st.header(f"Previsão Horária e Detalhada em {city_data['name']}")
 
     if "hourly" in weather_data:
         hourly = weather_data["hourly"]
@@ -590,104 +605,144 @@ def show_hourly_forecast(city_data, weather_data):
             "Código Condição": hourly["weather_code"]
         })
 
+        # Filtrar para as próximas 48 horas a partir da hora atual para o df_hourly base
         df_hourly = df_hourly[df_hourly['Hora'] >= datetime.now()].head(48).reset_index(drop=True)
 
-        if not df_hourly.empty:
-            st.subheader("Visão Geral Horária")
+        if df_hourly.empty:
+            st.info("Nenhum dado de previsão horária disponível para as próximas 48 horas.")
+            return
 
-            # --- Criação de Cartões de Resumo (Amanhecer, Meio-dia, Pôr do Sol) ---
-            st.write("#### Resumo do dia")
-            today_date = datetime.now().date()
-            daily_data = weather_data["daily"]
+        # --- Seção de Destaques Horários do Dia (Cartões de Resumo) ---
+        st.subheader("Destaques Horários do Dia")
+        
+        today_date_only = datetime.now().date()
+        daily_data = weather_data["daily"]
 
-            # Encontrar dados para o dia atual na previsão diária
-            current_day_daily_data = None
-            for idx, d_time in enumerate(daily_data['time']):
-                if pd.to_datetime(d_time).date() == today_date:
-                    current_day_daily_data = {key: daily_data[key][idx] for key in daily_data.keys()}
-                    break
+        # Encontrar os dados do dia atual na previsão diária
+        current_day_daily_data = None
+        for idx, d_time_str in enumerate(daily_data['time']):
+            if pd.to_datetime(d_time_str).date() == today_date_only:
+                current_day_daily_data = {key: daily_data[key][idx] for key in daily_data.keys()}
+                break
+        
+        summary_points_info = [] # Para armazenar os dados dos pontos de resumo
 
-            if current_day_daily_data:
-                # Obter horas para nascer/pôr do sol para o dia atual
-                sunrise_dt = pd.to_datetime(current_day_daily_data['sunrise'])
-                sunset_dt = pd.to_datetime(current_day_daily_data['sunset'])
+        if current_day_daily_data:
+            sunrise_dt = pd.to_datetime(current_day_daily_data['sunrise'])
+            sunset_dt = pd.to_datetime(current_day_daily_data['sunset'])
 
-                # Encontrar os pontos horários mais próximos para Amanhecer, Meio do Dia e Pôr do Sol
-                summary_points = []
-                
-                # Amanhecer
-                sunrise_hourly_data = df_hourly.iloc[(df_hourly['Hora'] - sunrise_dt).abs().argsort()[:1]]
-                if not sunrise_hourly_data.empty:
-                    summary_points.append({"Label": "☀️ Amanhecer", "Data": sunrise_hourly_data.iloc[0]})
-                
-                # Meio do Dia (procura por 12h ou a hora mais próxima do meio do dia no período do gráfico)
-                noon_hourly_data = df_hourly[(df_hourly['Hora'].dt.hour >= 11) & (df_hourly['Hora'].dt.hour <= 14) & (df_hourly['Hora'].dt.date == today_date)]
-                if noon_hourly_data.empty: # Se não encontrou no dia atual, pega a mais próxima de 12:00
-                    noon_dt_today = datetime.combine(today_date, datetime.min.time().replace(hour=12))
-                    noon_hourly_data = df_hourly.iloc[(df_hourly['Hora'] - noon_dt_today).abs().argsort()[:1]]
-                if not noon_hourly_data.empty:
-                    summary_points.append({"Label": " midday Meio do Dia", "Data": noon_hourly_data.iloc[0]})
+            # Amanhecer
+            sunrise_hourly_point = df_hourly.iloc[(df_hourly['Hora'] - sunrise_dt).abs().argsort()[:1]]
+            if not sunrise_hourly_point.empty:
+                summary_points_info.append({
+                    "Label": "☀️ Amanhecer",
+                    "Temp": sunrise_hourly_point.iloc[0]['Temperatura (°C)'],
+                    "Icon": sunrise_hourly_point.iloc[0]['Ícone'],
+                    "Condition": sunrise_hourly_point.iloc[0]['Condição']
+                })
 
-                # Pôr do Sol
-                sunset_hourly_data = df_hourly.iloc[(df_hourly['Hora'] - sunset_dt).abs().argsort()[:1]]
-                if not sunset_hourly_data.empty:
-                    summary_points.append({"Label": "🌙 Pôr do Sol", "Data": sunset_hourly_data.iloc[0]})
-                
-                cols_summary = st.columns(len(summary_points))
-                for i, point in enumerate(summary_points):
-                    with cols_summary[i]:
-                        st.metric(
-                            label=point["Label"],
-                            value=f"{point['Data']['Temperatura (°C)']}°C {point['Data']['Ícone']}",
-                            delta=f"{point['Data']['Condição']}"
-                        )
-            else:
-                st.info("Dados de nascer/pôr do sol para hoje não disponíveis para cartões de resumo.")
+            # Meio do Dia (procura por 12h no dia atual ou o mais próximo)
+            noon_dt_today = datetime.combine(today_date_only, datetime.min.time().replace(hour=12))
+            noon_hourly_point = df_hourly[(df_hourly['Hora'].dt.date == today_date_only)].iloc[(df_hourly[df_hourly['Hora'].dt.date == today_date_only]['Hora'] - noon_dt_today).abs().argsort()[:1]]
+            if not noon_hourly_point.empty:
+                summary_points_info.append({
+                    "Label": " midday Meio do Dia",
+                    "Temp": noon_hourly_point.iloc[0]['Temperatura (°C)'],
+                    "Icon": noon_hourly_point.iloc[0]['Ícone'],
+                    "Condition": noon_hourly_point.iloc[0]['Condição']
+                })
+            
+            # Pôr do Sol
+            sunset_hourly_point = df_hourly.iloc[(df_hourly['Hora'] - sunset_dt).abs().argsort()[:1]]
+            if not sunset_hourly_point.empty:
+                summary_points_info.append({
+                    "Label": "🌙 Pôr do Sol",
+                    "Temp": sunset_hourly_point.iloc[0]['Temperatura (°C)'],
+                    "Icon": sunset_hourly_point.iloc[0]['Ícone'],
+                    "Condition": sunset_hourly_point.iloc[0]['Condição']
+                })
+        
+        if summary_points_info:
+            cols_summary = st.columns(len(summary_points_info))
+            for i, point in enumerate(summary_points_info):
+                with cols_summary[i]:
+                    st.metric(
+                        label=point["Label"],
+                        value=f"{point['Temp']}°C {point['Icon']}",
+                        delta=f"{point['Condition']}"
+                    )
+        else:
+            st.info("Nenhum destaque horário disponível para o dia atual.")
+
+        st.markdown("---") # Separador
 
 
-            # --- Criação do Gráfico de Temperatura Estilizado com Plotly ---
-            fig_temp_stylized = go.Figure()
+        # --- Seção de Gráfico Horário Detalhado com Filtro de Dia ---
+        st.subheader("Gráfico Horário Detalhado")
 
+        # Filtro de data
+        # Define as datas disponíveis no df_hourly para o filtro
+        available_dates = df_hourly['Hora'].dt.date.unique()
+        
+        # Converte as datas para lista de datetime.date para o st.date_input
+        available_dates_dt = sorted([d.date() for d in available_dates])
+        
+        # Seleciona o dia atual por padrão ou a primeira data disponível
+        default_date_index = 0
+        if datetime.now().date() in available_dates_dt:
+            default_date_index = available_dates_dt.index(datetime.now().date())
+        elif available_dates_dt:
+            default_date_index = 0 # Fallback to first available date
+
+
+        selected_date = st.date_input(
+            "Selecione o dia para visualizar o gráfico:",
+            value=available_dates_dt[default_date_index],
+            min_value=min(available_dates_dt),
+            max_value=max(available_dates_dt),
+            key="hourly_chart_date_filter"
+        )
+        
+        # Filtrar df_hourly pelo dia selecionado
+        df_hourly_filtered = df_hourly[df_hourly['Hora'].dt.date == selected_date].reset_index(drop=True)
+
+        if not df_hourly_filtered.empty:
             # Calcular min/max da temperatura para dimensionamento das anotações
-            min_temp_chart = df_hourly['Temperatura (°C)'].min()
-            max_temp_chart = df_hourly['Temperatura (°C)'].max()
+            min_temp_chart = df_hourly_filtered['Temperatura (°C)'].min()
+            max_temp_chart = df_hourly_filtered['Temperatura (°C)'].max()
             temp_range_diff_chart = max_temp_chart - min_temp_chart
             
-            # Ajustar offset vertical para anotações acima/abaixo dos pontos
             annotation_offset_top = temp_range_diff_chart * 0.15 if temp_range_diff_chart > 0 else 5
             annotation_offset_bottom = temp_range_diff_chart * 0.10 if temp_range_diff_chart > 0 else 5
 
-            # Adicionar a linha/área de temperatura
+            # --- GRÁFICO DE TEMPERATURA ---
+            fig_temp_stylized = go.Figure()
+
             fig_temp_stylized.add_trace(go.Scatter(
-                x=df_hourly['Hora'],
-                y=df_hourly['Temperatura (°C)'],
+                x=df_hourly_filtered['Hora'],
+                y=df_hourly_filtered['Temperatura (°C)'],
                 mode='lines+markers',
                 name='Temperatura',
                 line=dict(color='#FF7F00', width=3),
                 fill='tozeroy',
                 fillcolor='rgba(255, 127, 0, 0.2)',
                 hovertemplate="<b>Hora:</b> %{x|%H:%M}<br><b>Temp:</b> %{y}°C<br><b>Condição:</b> %{customdata[0]}<extra></extra>",
-                customdata=df_hourly[['Condição', 'Precipitação (mm)', 'Ícone']]
+                customdata=df_hourly_filtered[['Condição', 'Precipitação (mm)', 'Ícone']]
             ))
 
-            # Adicionar anotações para cada ponto (hora, ícone, temperatura)
             annotations_temp_chart = []
             weekday_map = {"Mon": "seg", "Tue": "ter", "Wed": "qua", "Thu": "qui", "Fri": "sex", "Sat": "sáb", "Sun": "dom"}
 
-            for i, row in df_hourly.iterrows():
-                date_label = ""
-                # Show date if it's the first point or a new day
-                if i == 0 or (i > 0 and row['Hora'].date() != df_hourly['Hora'].iloc[i-1].date()):
-                    day_abbr = weekday_map.get(row['Hora'].strftime("%a"), row['Hora'].strftime("%a"))
-                    date_label = f"{day_abbr}. {row['Hora'].day}<br>"
-
+            for i, row in df_hourly_filtered.iterrows():
+                date_label = "" # Data já está no título do gráfico agora
+                
                 annotations_temp_chart.append(
                     dict(
                         x=row['Hora'],
                         y=row['Temperatura (°C)'] + annotation_offset_top,
                         xref="x",
                         yref="y",
-                        text=f"{date_label}{row['Hora'].strftime('%H:%M')}<br>{row['Ícone']}<br><b>{row['Temperatura (°C)']}°C</b>",
+                        text=f"{row['Hora'].strftime('%H:%M')}<br>{row['Ícone']}<br><b>{row['Temperatura (°C)']}°C</b>",
                         showarrow=False,
                         xanchor='center',
                         yanchor='bottom',
@@ -696,46 +751,43 @@ def show_hourly_forecast(city_data, weather_data):
                     )
                 )
             
-            # Adicionar o Nascer e Pôr do Sol como anotações no gráfico de temperatura
-            if weather_data and "daily" in weather_data:
-                daily_data = weather_data["daily"]
-                for day_idx in range(len(daily_data['time'])):
-                    current_day_date = pd.to_datetime(daily_data['time'][day_idx]).date()
-                    
-                    sunrise_dt_daily = datetime.combine(current_day_date, pd.to_datetime(daily_data['sunrise'][day_idx]).time())
-                    sunset_dt_daily = datetime.combine(current_day_date, pd.to_datetime(daily_data['sunset'][day_idx]).time())
+            # Adicionar o Nascer e Pôr do Sol como anotações no gráfico de temperatura (apenas para o dia selecionado)
+            if current_day_daily_data: # Usamos o current_day_daily_data que já filtramos para o dia atual ou o mais próximo
+                sunrise_dt_selected_day = datetime.combine(selected_date, pd.to_datetime(current_day_daily_data['sunrise']).time())
+                sunset_dt_selected_day = datetime.combine(selected_date, pd.to_datetime(current_day_daily_data['sunset']).time())
 
-                    if sunrise_dt_daily >= df_hourly['Hora'].min() and sunrise_dt_daily <= df_hourly['Hora'].max():
-                        annotations_temp_chart.append(
-                            dict(
-                                x=sunrise_dt_daily,
-                                y=min_temp_chart - (annotation_offset_bottom / 2),
-                                xref="x",
-                                yref="y",
-                                text="☀️ Nascer do Sol",
-                                showarrow=False,
-                                xanchor='center',
-                                yanchor='top',
-                                font=dict(size=10, color="orange")
-                            )
+                if sunrise_dt_selected_day >= df_hourly_filtered['Hora'].min() and sunrise_dt_selected_day <= df_hourly_filtered['Hora'].max():
+                    annotations_temp_chart.append(
+                        dict(
+                            x=sunrise_dt_selected_day,
+                            y=min_temp_chart - (annotation_offset_bottom / 2),
+                            xref="x",
+                            yref="y",
+                            text="☀️ Nascer do Sol",
+                            showarrow=False,
+                            xanchor='center',
+                            yanchor='top',
+                            font=dict(size=10, color="orange")
                         )
-                    
-                    if sunset_dt_daily >= df_hourly['Hora'].min() and sunset_dt_daily <= df_hourly['Hora'].max():
-                        annotations_temp_chart.append(
-                            dict(
-                                x=sunset_dt_daily,
-                                y=min_temp_chart - (annotation_offset_bottom / 2),
-                                xref="x",
-                                yref="y",
-                                text="🌙 Pôr do Sol",
-                                showarrow=False,
-                                xanchor='center',
-                                yanchor='top',
-                                font=dict(size=10, color="purple")
-                            )
+                    )
+                
+                if sunset_dt_selected_day >= df_hourly_filtered['Hora'].min() and sunset_dt_selected_day <= df_hourly_filtered['Hora'].max():
+                    annotations_temp_chart.append(
+                        dict(
+                            x=sunset_dt_selected_day,
+                            y=min_temp_chart - (annotation_offset_bottom / 2),
+                            xref="x",
+                            yref="y",
+                            text="🌙 Pôr do Sol",
+                            showarrow=False,
+                            xanchor='center',
+                            yanchor='top',
+                            font=dict(size=10, color="purple")
                         )
+                    )
 
             fig_temp_stylized.update_layout(
+                title=dict(text=f"Temperatura Horária em {city_data['name']} ({selected_date.strftime('%d/%m/%Y')})", x=0.5),
                 xaxis_title="",
                 yaxis_title="Temperatura (°C)",
                 hovermode="x unified",
@@ -743,45 +795,57 @@ def show_hourly_forecast(city_data, weather_data):
                 showlegend=False,
                 xaxis=dict(
                     rangeselector=None,
-                    rangeslider=dict(visible=False), # Desativa o rangeslider aqui, será no fig_combined
+                    rangeslider=dict(visible=False), # O rangeslider principal estará no gráfico de precipitação
                     type="date",
                     tickformat="%H:%M",
                     dtick="H1",
-                    showgrid=True, # Mostra as linhas de grade para visualização horária
-                    tickangle=-45 # Ângulo dos rótulos da hora
+                    showgrid=True,
+                    tickangle=-45
                 ),
                 yaxis=dict(
                     range=[min_temp_chart - (temp_range_diff_chart * 0.25), max_temp_chart + (temp_range_diff_chart * 0.25)],
                     showgrid=True
                 ),
-                margin=dict(l=40, r=40, t=30, b=10), # Ajustar margens
-                height=250, # Altura menor para o gráfico de temperatura
-                title=dict(text=f"Temperatura Horária em {city_data['name']}", x=0.5) # Título acima
+                margin=dict(l=40, r=40, t=50, b=10),
+                height=300,
             )
 
-            # --- Criação do Gráfico de Precipitação (barras) ---
+            # Toggle para Sensação Térmica para o gráfico de temperatura
+            show_feels_like = st.checkbox("Mostrar Sensação Térmica (Temperatura)", key="hourly_feels_like_toggle_temp_chart")
+            if show_feels_like:
+                fig_temp_stylized.add_trace(go.Scatter(
+                    x=df_hourly_filtered['Hora'],
+                    y=df_hourly_filtered['Sensação Térmica (°C)'],
+                    mode='lines',
+                    name='Sensação Térmica',
+                    line=dict(color='#8B4513', width=2, dash='dot'),
+                    hovertemplate="<b>Hora:</b> %{x|%H:%M}<br><b>Sensação:</b> %{y}°C<extra></extra>"
+                ))
+                fig_temp_stylized.update_layout(showlegend=True)
+
+            st.plotly_chart(fig_temp_stylized, use_container_width=True)
+
+            # --- GRÁFICO DE PRECIPITAÇÃO ---
             fig_precip_stylized = go.Figure()
 
-            # Adicionar barras de precipitação
             fig_precip_stylized.add_trace(go.Bar(
-                x=df_hourly['Hora'],
-                y=df_hourly['Precipitação (mm)'],
+                x=df_hourly_filtered['Hora'],
+                y=df_hourly_filtered['Precipitação (mm)'],
                 name='Precipitação',
                 marker_color='blue',
                 hovertemplate="<b>Hora:</b> %{x|%H:%M}<br><b>Precipitação:</b> %{y}mm<extra></extra>"
             ))
 
-            # Adicionar anotação de porcentagem de precipitação (se houver, no futuro, ou ajustar a lógica)
             annotations_precip_chart = []
-            for i, row in df_hourly.iterrows():
+            for i, row in df_hourly_filtered.iterrows():
                 if row['Precipitação (mm)'] > 0:
                     annotations_precip_chart.append(
                         dict(
                             x=row['Hora'],
-                            y=row['Precipitação (mm)'] + 0.5, # Posição acima da barra
+                            y=row['Precipitação (mm)'] + 0.5,
                             xref="x",
                             yref="y",
-                            text=f"{row['Precipitação (mm)']}mm", # Se tiver chance de precipitação, usar: f"{row['Chance de Chuva']}%"
+                            text=f"💧{row['Precipitação (mm)']}mm",
                             showarrow=False,
                             xanchor='center',
                             yanchor='bottom',
@@ -790,6 +854,7 @@ def show_hourly_forecast(city_data, weather_data):
                     )
 
             fig_precip_stylized.update_layout(
+                title=dict(text=f"Precipitação Horária em {city_data['name']} ({selected_date.strftime('%d/%m/%Y')})", x=0.5),
                 xaxis_title="",
                 yaxis_title="Precipitação (mm)",
                 hovermode="x unified",
@@ -799,35 +864,22 @@ def show_hourly_forecast(city_data, weather_data):
                     type="date",
                     showgrid=True,
                     tickangle=-45,
-                    rangeslider=dict(visible=True, thickness=0.2), #Rangeslider para o segundo gráfico
+                    rangeslider=dict(visible=True, thickness=0.2), # Rangeslider at the bottom of precipitation chart
                     tickformat="%H:%M",
                     dtick="H1"
                 ),
                 yaxis=dict(
-                    range=[0, df_hourly['Precipitação (mm)'].max() * 1.5], # Ajusta o range da precipitação
+                    range=[0, df_hourly_filtered['Precipitação (mm)'].max() * 1.5 if df_hourly_filtered['Precipitação (mm)'].max() > 0 else 5],
                     showgrid=True
                 ),
-                margin=dict(l=40, r=40, t=10, b=40), # Ajustar margens
-                height=150 # Altura menor para o gráfico de precipitação
+                margin=dict(l=40, r=40, t=10, b=40),
+                height=200, # Altura um pouco maior para o gráfico de precipitação
             )
-
-            # Para sincronizar os eixos X dos dois gráficos para rolagem conjunta
-            # Isso é feito na criação do subplots ou com update_layout para xaxis2
-            # No Streamlit, a maneira mais fácil é criar um único objeto de figura com subplots
-            # ou confiar que Streamlit alinhará bem quando renderizados consecutivamente.
-            # No entanto, a sincronização do rangeslider é mais complexa sem subplots.
-            # Uma alternativa é usar um rangeslider em apenas um gráfico e deixar o outro seguir se rolar.
-
-            # Combinar os gráficos para rolagem conjunta é mais complexo sem subplots explícitos ou callbacks JS
-            # No Streamlit, renderizá-los um após o outro manterá a ordem, mas a rolagem não será sincronizada por padrão
-            # A menos que se use `go.Figure.subplots` ou um componente customizado para sincronizar.
-            # Para o seu caso, Plotly `rangeslider` em um dos gráficos já permite a navegação horária.
-
-            st.plotly_chart(fig_temp_stylized, use_container_width=True)
+            
             st.plotly_chart(fig_precip_stylized, use_container_width=True)
 
         else:
-            st.info("Nenhum dado de previsão horária disponível para as próximas 48 horas.")
+            st.info(f"Nenhum dado de previsão horária disponível para {selected_date.strftime('%d/%m/%Y')}.")
     else:
         st.warning("Dados de previsão horária não disponíveis.")
 
@@ -1326,8 +1378,8 @@ def main():
             with tab1:
                 show_current_weather(selected_city_data, weather_data, fire_data, air_quality_data)
 
-            with tab2:
-                show_hourly_forecast(selected_city_data, weather_data)
+            with tab2: # Esta aba agora vai gerenciar tanto os resumos quanto os gráficos detalhados
+                show_hourly_summary_and_detailed_chart(selected_city_data, weather_data)
 
             with tab3:
                 show_weekly_forecast(selected_city_data, weather_data)
