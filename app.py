@@ -170,6 +170,9 @@ h1, h2, h3, h4, h5, h6 {
     opacity: 0.8;
 }
 
+/* Remover estilos de hourly-card e hourly-card-container,
+   pois o Plotly fará a visualização integrada */
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -618,48 +621,48 @@ def show_hourly_summary_and_detailed_chart(city_data, weather_data):
         today_date_only = datetime.now().date()
         daily_data = weather_data["daily"]
 
-        # Encontrar os dados do dia atual na previsão diária
-        current_day_daily_data = None
-        for idx, d_time_str in enumerate(daily_data['time']):
-            if pd.to_datetime(d_time_str).date() == today_date_only:
-                current_day_daily_data = {key: daily_data[key][idx] for key in daily_data.keys()}
-                break
-        
         summary_points_info = [] # Para armazenar os dados dos pontos de resumo
 
-        if current_day_daily_data:
-            sunrise_dt = pd.to_datetime(current_day_daily_data['sunrise'])
-            sunset_dt = pd.to_datetime(current_day_daily_data['sunset'])
+        # Encontrar os dados do dia atual na previsão diária para o resumo
+        current_day_daily_data_for_summary = None
+        for idx, d_time_str in enumerate(daily_data['time']):
+            if pd.to_datetime(d_time_str).date() == today_date_only:
+                current_day_daily_data_for_summary = {key: daily_data[key][idx] for key in daily_data.keys()}
+                break
+        
+        if current_day_daily_data_for_summary:
+            sunrise_dt = pd.to_datetime(current_day_daily_data_for_summary['sunrise'])
+            sunset_dt = pd.to_datetime(current_day_daily_data_for_summary['sunset'])
 
-            # Amanhecer
-            sunrise_hourly_point = df_hourly.iloc[(df_hourly['Hora'] - sunrise_dt).abs().argsort()[:1]]
-            if not sunrise_hourly_point.empty:
+            # Amanhecer: Encontra a hora mais próxima do nascer do sol no df_hourly filtrado
+            sunrise_hourly_point_df = df_hourly.iloc[(df_hourly['Hora'] - sunrise_dt).abs().argsort()[:1]]
+            if not sunrise_hourly_point_df.empty:
                 summary_points_info.append({
                     "Label": "☀️ Amanhecer",
-                    "Temp": sunrise_hourly_point.iloc[0]['Temperatura (°C)'],
-                    "Icon": sunrise_hourly_point.iloc[0]['Ícone'],
-                    "Condition": sunrise_hourly_point.iloc[0]['Condição']
+                    "Temp": sunrise_hourly_point_df.iloc[0]['Temperatura (°C)'],
+                    "Icon": sunrise_hourly_point_df.iloc[0]['Ícone'],
+                    "Condition": sunrise_hourly_point_df.iloc[0]['Condição']
                 })
 
-            # Meio do Dia (procura por 12h no dia atual ou o mais próximo)
+            # Meio do Dia: Procura por 12h ou a hora mais próxima do meio do dia no período do gráfico para o dia atual
             noon_dt_today = datetime.combine(today_date_only, datetime.min.time().replace(hour=12))
-            noon_hourly_point = df_hourly[(df_hourly['Hora'].dt.date == today_date_only)].iloc[(df_hourly[df_hourly['Hora'].dt.date == today_date_only]['Hora'] - noon_dt_today).abs().argsort()[:1]]
-            if not noon_hourly_point.empty:
+            noon_hourly_point_df = df_hourly[(df_hourly['Hora'].dt.date == today_date_only)].iloc[(df_hourly[df_hourly['Hora'].dt.date == today_date_only]['Hora'] - noon_dt_today).abs().argsort()[:1]]
+            if not noon_hourly_point_df.empty:
                 summary_points_info.append({
                     "Label": " midday Meio do Dia",
-                    "Temp": noon_hourly_point.iloc[0]['Temperatura (°C)'],
-                    "Icon": noon_hourly_point.iloc[0]['Ícone'],
-                    "Condition": noon_hourly_point.iloc[0]['Condição']
+                    "Temp": noon_hourly_point_df.iloc[0]['Temperatura (°C)'],
+                    "Icon": noon_hourly_point_df.iloc[0]['Ícone'],
+                    "Condition": noon_hourly_point_df.iloc[0]['Condição']
                 })
             
-            # Pôr do Sol
-            sunset_hourly_point = df_hourly.iloc[(df_hourly['Hora'] - sunset_dt).abs().argsort()[:1]]
-            if not sunset_hourly_point.empty:
+            # Pôr do Sol: Encontra a hora mais próxima do pôr do sol no df_hourly filtrado
+            sunset_hourly_point_df = df_hourly.iloc[(df_hourly['Hora'] - sunset_dt).abs().argsort()[:1]]
+            if not sunset_hourly_point_df.empty:
                 summary_points_info.append({
                     "Label": "🌙 Pôr do Sol",
-                    "Temp": sunset_hourly_point.iloc[0]['Temperatura (°C)'],
-                    "Icon": sunset_hourly_point.iloc[0]['Ícone'],
-                    "Condition": sunset_hourly_point.iloc[0]['Condição']
+                    "Temp": sunset_hourly_point_df.iloc[0]['Temperatura (°C)'],
+                    "Icon": sunset_hourly_point_df.iloc[0]['Ícone'],
+                    "Condition": sunset_hourly_point_df.iloc[0]['Condição']
                 })
         
         if summary_points_info:
@@ -681,23 +684,23 @@ def show_hourly_summary_and_detailed_chart(city_data, weather_data):
         st.subheader("Gráfico Horário Detalhado")
 
         # Filtro de data
-        # Define as datas disponíveis no df_hourly para o filtro
         available_dates = df_hourly['Hora'].dt.date.unique()
-        
-        # Converte as datas para lista de datetime.date para o st.date_input
-        available_dates_dt = sorted([d.date() for d in available_dates])
-        
-        # Seleciona o dia atual por padrão ou a primeira data disponível
-        default_date_index = 0
-        if datetime.now().date() in available_dates_dt:
-            default_date_index = available_dates_dt.index(datetime.now().date())
-        elif available_dates_dt:
-            default_date_index = 0 # Fallback to first available date
+        available_dates_dt = sorted(list(available_dates)) # Correção: remover .date() redundante e garantir lista
 
+        # Define a data padrão para o filtro: hoje, se disponível, senão a primeira data disponível
+        default_date_value = None
+        if today_date_only in available_dates_dt:
+            default_date_value = today_date_only
+        elif available_dates_dt:
+            default_date_value = available_dates_dt[0] # Fallback para a primeira data disponível
+        
+        if default_date_value is None:
+            st.warning("Nenhum dado de previsão disponível para seleção de dia.")
+            return # Sai da função se não houver datas para mostrar
 
         selected_date = st.date_input(
             "Selecione o dia para visualizar o gráfico:",
-            value=available_dates_dt[default_date_index],
+            value=default_date_value,
             min_value=min(available_dates_dt),
             max_value=max(available_dates_dt),
             key="hourly_chart_date_filter"
@@ -734,8 +737,7 @@ def show_hourly_summary_and_detailed_chart(city_data, weather_data):
             weekday_map = {"Mon": "seg", "Tue": "ter", "Wed": "qua", "Thu": "qui", "Fri": "sex", "Sat": "sáb", "Sun": "dom"}
 
             for i, row in df_hourly_filtered.iterrows():
-                date_label = "" # Data já está no título do gráfico agora
-                
+                # A data já está no título do gráfico
                 annotations_temp_chart.append(
                     dict(
                         x=row['Hora'],
@@ -752,10 +754,18 @@ def show_hourly_summary_and_detailed_chart(city_data, weather_data):
                 )
             
             # Adicionar o Nascer e Pôr do Sol como anotações no gráfico de temperatura (apenas para o dia selecionado)
-            if current_day_daily_data: # Usamos o current_day_daily_data que já filtramos para o dia atual ou o mais próximo
-                sunrise_dt_selected_day = datetime.combine(selected_date, pd.to_datetime(current_day_daily_data['sunrise']).time())
-                sunset_dt_selected_day = datetime.combine(selected_date, pd.to_datetime(current_day_daily_data['sunset']).time())
+            # Buscar dados diários para o dia selecionado no filtro
+            selected_day_daily_data_for_chart = None
+            for idx, d_time_str in enumerate(weather_data["daily"]['time']):
+                if pd.to_datetime(d_time_str).date() == selected_date:
+                    selected_day_daily_data_for_chart = {key: weather_data["daily"][key][idx] for key in weather_data["daily"].keys()}
+                    break
 
+            if selected_day_daily_data_for_chart:
+                sunrise_dt_selected_day = datetime.combine(selected_date, pd.to_datetime(selected_day_daily_data_for_chart['sunrise']).time())
+                sunset_dt_selected_day = datetime.combine(selected_date, pd.to_datetime(selected_day_daily_data_for_chart['sunset']).time())
+
+                # Adiciona o Nascer do Sol se estiver dentro do período do gráfico
                 if sunrise_dt_selected_day >= df_hourly_filtered['Hora'].min() and sunrise_dt_selected_day <= df_hourly_filtered['Hora'].max():
                     annotations_temp_chart.append(
                         dict(
@@ -771,6 +781,7 @@ def show_hourly_summary_and_detailed_chart(city_data, weather_data):
                         )
                     )
                 
+                # Adiciona o Pôr do Sol se estiver dentro do período do gráfico
                 if sunset_dt_selected_day >= df_hourly_filtered['Hora'].min() and sunset_dt_selected_day <= df_hourly_filtered['Hora'].max():
                     annotations_temp_chart.append(
                         dict(
@@ -873,7 +884,7 @@ def show_hourly_summary_and_detailed_chart(city_data, weather_data):
                     showgrid=True
                 ),
                 margin=dict(l=40, r=40, t=10, b=40),
-                height=200, # Altura um pouco maior para o gráfico de precipitação
+                height=200,
             )
             
             st.plotly_chart(fig_precip_stylized, use_container_width=True)
