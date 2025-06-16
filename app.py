@@ -127,6 +127,69 @@ h1, h2, h3, h4, h5, h6 {
     padding-top: 20px;
     border-top: 1px solid #E0E0E0;
 }
+
+/* Estilo para a sessão "hero" da temperatura atual */
+.current-weather-hero {
+    background-color: #1E88E5; /* Cor de fundo primária */
+    color: white;
+    padding: 30px;
+    border-radius: 12px;
+    text-align: center;
+    margin-bottom: 20px;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+}
+.current-weather-hero h2 {
+    color: white;
+    font-size: 4em; /* Temperatura maior */
+    margin: 0;
+    line-height: 1.0;
+}
+.current-weather-hero p {
+    font-size: 1.5em; /* Condição maior */
+    margin-top: 5px;
+    margin-bottom: 0;
+}
+.current-weather-hero .temp-range {
+    font-size: 1.2em;
+    opacity: 0.8;
+}
+
+/* Estilo para cartões de previsão horária */
+.hourly-card {
+    background-color: white;
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin: 5px;
+    display: inline-block; /* Para scroll horizontal */
+    min-width: 120px; /* Largura mínima do cartão */
+    text-align: center;
+    vertical-align: top;
+    white-space: normal; /* Permite que o texto quebre linha */
+}
+.hourly-card .time {
+    font-weight: bold;
+    font-size: 1.1em;
+    color: #1E88E5;
+}
+.hourly-card .temp {
+    font-size: 1.3em;
+    font-weight: bold;
+    margin: 5px 0;
+}
+.hourly-card .icon {
+    font-size: 2em; /* Ícone maior */
+    margin-bottom: 5px;
+}
+.hourly-card .condition {
+    font-size: 0.9em;
+    color: #555;
+}
+.hourly-card-container {
+    overflow-x: auto; /* Permite scroll horizontal */
+    white-space: nowrap; /* Mantém os itens na mesma linha */
+    padding-bottom: 10px; /* Espaço para o scrollbar */
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -143,6 +206,17 @@ WEATHER_CODES = {
     81: "Pancadas de chuva moderadas", 82: "Pancadas de chuva violentas", 85: "Pancadas de neve leves",
     86: "Pancadas de neve fortes", 95: "Trovoada leve ou moderada", 96: "Trovoada com granizo leve",
     99: "Trovoada com granizo forte"
+}
+
+# Dicionário de ícones de clima (Emojis)
+WEATHER_ICONS = {
+    0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+    45: "🌫️", 48: "🌫️❄️", 51: "🌧️", 53: "🌧️",
+    55: "🌧️", 56: "🧊🌧️", 57: "🧊🌧️", 61: "🌧️",
+    63: "🌧️", 65: "⛈️", 66: "🧊🌧️", 67: "🧊🌧️",
+    71: "🌨️", 73: "🌨️", 75: "🌨️", 77: "❄️",
+    80: "🌦️", 81: "🌧️", 82: "⛈️", 85: "🌨️",
+    86: "🌨️", 95: "⚡️", 96: "⚡️🌨️", 99: "⚡️🌨️"
 }
 
 # Inicializar banco de dados SQLite
@@ -184,7 +258,7 @@ def get_weather_data(latitude, longitude, timezone="auto", forecast_days=16):
     params = {
         "latitude": latitude, "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
-        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
+        "hourly": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index,surface_pressure",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset",
         "timezone": timezone,
         "forecast_days": forecast_days
@@ -471,22 +545,35 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
     """Exibe as condições climáticas atuais e um mapa interativo."""
     st.header(f"⏱️ Condições Atuais em {city_data['name']}")
 
-    # Cartões com métricas de clima atual
     current = weather_data["current"]
     daily = weather_data["daily"]
 
-    # Primeira linha de métricas
+    # Seção "hero" para a temperatura e condição atuais (similar ao destaque do MSN)
+    with st.container():
+        st.markdown(f"""
+        <div class="current-weather-hero">
+            <h2>{current['temperature_2m']}°C {WEATHER_ICONS.get(current['weather_code'], '❓')}</h2>
+            <p>{WEATHER_CODES.get(current['weather_code'], 'Desconhecido')}</p>
+            <p class="temp-range">Máx: {daily['temperature_2m_max'][0]}°C | Mín: {daily['temperature_2m_min'][0]}°C</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Cartões com métricas de clima atual (restantes)
     cols_metrics = st.columns(3)
-    cols_metrics[0].metric("🌡️ Temperatura", f"{current['temperature_2m']}°C", f"Sensação: {current['apparent_temperature']}°C")
+    cols_metrics[0].metric("🌡️ Sensação", f"{current['apparent_temperature']}°C")
     cols_metrics[1].metric("💧 Umidade", f"{current['relative_humidity_2m']}%")
     cols_metrics[2].metric("🌬️ Vento", f"{current['wind_speed_10m']} km/h", f"Dir: {current['wind_direction_10m']}°")
 
-    # Segunda linha de métricas
     cols_metrics_2 = st.columns(3)
     cols_metrics_2[0].metric("🌧️ Precipitação (1h)", f"{current['precipitation']} mm")
-    cols_metrics_2[1].metric("📌 Condição", WEATHER_CODES.get(current['weather_code'], "Desconhecido"))
     uv_index = current.get('uv_index')
-    cols_metrics_2[2].metric("☀️ Índice UV", f"{uv_index}" if uv_index is not None else "N/A")
+    cols_metrics_2[1].metric("☀️ Índice UV", f"{uv_index}" if uv_index is not None else "N/A")
+    surface_pressure = weather_data['hourly'].get('surface_pressure')
+    if surface_pressure and len(surface_pressure) > 0:
+        cols_metrics_2[2].metric("📈 Pressão", f"{surface_pressure[0]} hPa")
+    else:
+        cols_metrics_2[2].metric("📈 Pressão", "N/A")
+
 
     st.subheader("Informações Diárias para Hoje")
     # Cartões de informações diárias
@@ -498,7 +585,7 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
         cols_daily[2].metric("💧 Precipitação (24h)", f"{daily['precipitation_sum'][today_idx]} mm")
 
     # Mapa na parte inferior, ocupando a largura total
-    st.markdown("---") # Separador visual para o mapa
+    st.markdown("---")
     st.subheader("🌍 Mapa Interativo da Região")
     m = create_weather_map(
         city_data["latitude"],
@@ -508,7 +595,6 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
         fire_data=fire_data,
         air_quality_data=air_quality_data
     )
-    # Ajuste o width para None para que o mapa ocupe a largura total disponível
     map_data = st_folium(m, width=None, height=500, key=f"map_{city_data['name']}")
 
     if map_data.get("last_clicked"):
@@ -516,6 +602,72 @@ def show_current_weather(city_data, weather_data, fire_data=None, air_quality_da
             "lat": map_data["last_clicked"]["lat"],
             "lon": map_data["last_clicked"]["lng"]
         }
+
+def show_hourly_forecast(city_data, weather_data):
+    """Exibe a previsão horária do tempo."""
+    st.header(f" hourly_forecast Previsão Horária em {city_data['name']}")
+
+    if "hourly" in weather_data:
+        hourly = weather_data["hourly"]
+        hourly_times = pd.to_datetime(hourly["time"])
+
+        df_hourly = pd.DataFrame({
+            "Hora": hourly_times,
+            "Temperatura (°C)": hourly["temperature_2m"],
+            "Precipitação (mm)": hourly["precipitation"],
+            "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in hourly["weather_code"]],
+            "Ícone": [WEATHER_ICONS.get(code, "❓") for code in hourly["weather_code"]],
+            "Vento (km/h)": hourly["wind_speed_10m"]
+        })
+
+        df_hourly = df_hourly[df_hourly['Hora'] >= datetime.now()].head(48).reset_index(drop=True)
+
+        if not df_hourly.empty:
+            st.subheader("Gráficos de Tendência Horária")
+            # Gráfico de linhas para temperatura horária
+            fig_temp_hourly = px.line(df_hourly, x="Hora", y="Temperatura (°C)",
+                                      title="Temperatura Horária",
+                                      labels={"Temperatura (°C)": "Temperatura"},
+                                      line_shape="spline",
+                                      color_discrete_sequence=["#FF7F00"])
+            fig_temp_hourly.update_layout(hovermode="x unified")
+            st.plotly_chart(fig_temp_hourly, use_container_width=True)
+
+            # Gráfico de barras para precipitação horária
+            fig_precip_hourly = px.bar(df_hourly, x="Hora", y="Precipitação (mm)",
+                                       title="Precipitação Horária",
+                                       labels={"Precipitação (mm)": "Volume (mm)"},
+                                       color_discrete_sequence=["#2E8B57"])
+            st.plotly_chart(fig_precip_hourly, use_container_width=True)
+
+            st.write("### Detalhes Horários:")
+            # Cartões scrolláveis horizontalmente
+            st.markdown('<div class="hourly-card-container">', unsafe_allow_html=True)
+            for idx, row in df_hourly.iterrows():
+                time_display = row['Hora'].strftime("%H:%M")
+                date_display = row['Hora'].strftime("%d/%m")
+                # Se for a primeira hora, ou se o dia mudou, mostra a data
+                if idx == 0 or row['Hora'].day != df_hourly['Hora'].iloc[idx-1].day:
+                    time_info = f"<div style='font-size:0.8em; opacity:0.7;'>{date_display}</div>{time_display}"
+                else:
+                    time_info = time_display
+
+                st.markdown(f"""
+                <div class="hourly-card">
+                    <div class="time">{time_info}</div>
+                    <div class="icon">{row['Ícone']}</div>
+                    <div class="temp">{row['Temperatura (°C)']}°C</div>
+                    <div class="condition">{row['Condição']}</div>
+                    <div>{row['Precipitação (mm)']}mm</div>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+
+        else:
+            st.info("Nenhum dado de previsão horária disponível para as próximas 48 horas.")
+    else:
+        st.warning("Dados de previsão horária não disponíveis.")
 
 
 def show_weekly_forecast(city_data, weather_data):
@@ -533,7 +685,8 @@ def show_weekly_forecast(city_data, weather_data):
             "Vento (km/h)": daily["wind_speed_10m_max"],
             "Direção Vento": daily["wind_direction_10m_dominant"],
             "Índice UV Máx": daily.get("uv_index_max", [None]*len(dates)),
-            "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]]
+            "Condição": [WEATHER_CODES.get(code, "Desconhecido") for code in daily["weather_code"]],
+            "Ícone": [WEATHER_ICONS.get(code, "❓") for code in daily["weather_code"]]
         }).head(7)
 
         fig_temp = px.line(df, x="Data", y=["Máxima (°C)", "Mínima (°C)"],
@@ -551,7 +704,20 @@ def show_weekly_forecast(city_data, weather_data):
         st.plotly_chart(fig_precip, use_container_width=True)
 
         st.write("### Detalhes da Previsão")
-        st.dataframe(df.style.background_gradient(cmap='coolwarm', subset=["Precipitação (mm)", "Vento (km/h)"]))
+        for idx, row in df.iterrows():
+            col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+            with col1:
+                st.write(f"**{row['Data'].strftime('%a, %d/%m')}**")
+            with col2:
+                st.write(f"<span style='font-size: 1.5em;'>{row['Ícone']}</span>", unsafe_allow_html=True)
+            with col3:
+                st.write(f"{row['Condição']}")
+            with col4:
+                st.write(f"**{row['Máxima (°C)']}°C**")
+            with col5:
+                st.write(f"{row['Mínima (°C)']}°C")
+            st.markdown("---")
+
 
         upcoming_events = detect_extreme_events({"daily": {k: v[:7] for k, v in daily.items()}})
         if upcoming_events:
@@ -568,7 +734,7 @@ def show_extended_forecast(city_data, weather_data):
         daily = weather_data["daily"]
         dates = pd.to_datetime(daily["time"])
 
-        st.write(f"**A API retornou dados para {len(dates)} dias.**") # Feedback sobre o nº de dias recebidos
+        st.write(f"**A API retornou dados para {len(dates)} dias.**")
 
         df = pd.DataFrame({
             "Data": dates,
@@ -856,12 +1022,12 @@ def main():
                                        placeholder="Ex: São Paulo, Rio de Janeiro")
 
     with col2:
-        st.write("") # Espaçamento para alinhar o botão
+        st.write("")
         st.write("")
         if st.button("📍 Usar Minha Localização",
                      help="Clique e permita o acesso à localização no seu navegador",
                      key="get_location_button"):
-            st.session_state.trigger_geolocation = True # Ativa o script JS
+            st.session_state.trigger_geolocation = True
             st.session_state.current_city_search = ""
             st.session_state.current_city_display = ""
             st.session_state.current_location_coords = None
@@ -874,7 +1040,7 @@ def main():
     const triggerGeolocation = {str(st.session_state.get('trigger_geolocation', False)).lower()};
 
     if (streamlitAppReady && triggerGeolocation) {{
-        Streamlit.setComponentValue('trigger_geolocation', false); // Consome o trigger para evitar loops
+        Streamlit.setComponentValue('trigger_geolocation', false);
 
         if (navigator.geolocation) {{
             navigator.geolocation.getCurrentPosition(
@@ -882,7 +1048,7 @@ def main():
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
                     const message = `Minha Localização,${{lat}},${{lon}}`;
-                    Streamlit.setComponentValue('user_location_result', message); // Envia o resultado para o Python
+                    Streamlit.setComponentValue('user_location_result', message);
                 }},
                 function(error) {{
                     let errorMessage;
@@ -899,7 +1065,7 @@ def main():
                         default:
                             errorMessage = "Ocorreu um erro desconhecido ao tentar obter a localização.";
                     }}
-                    Streamlit.setComponentValue('location_error_message', errorMessage); // Envia o erro para o Python
+                    Streamlit.setComponentValue('location_error_message', errorMessage);
                 }},
                 {{enableHighAccuracy: true, timeout: 10000, maximumAge: 0}}
             );
@@ -919,9 +1085,7 @@ def main():
         lon = float(parts[2])
 
         try:
-            # Reversão de geocoding para um nome de cidade amigável
             geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
-            # Definindo um User-Agent para evitar ser bloqueado por algumas APIs
             headers = {'User-Agent': 'WeatherAppStreamlit/1.0 (contact@weatherpro.com)'}
             geo_response = requests.get(geo_url, headers=headers)
             geo_response.raise_for_status()
@@ -941,27 +1105,24 @@ def main():
             st.session_state.current_city_display = f"Localização Detectada (Lat: {lat:.2f}, Lon: {lon:.2f})"
 
         st.session_state.current_location_coords = {"lat": lat, "lon": lon}
-        st.session_state.current_city_search = st.session_state.current_city_display # Preenche o input de busca
-        st.session_state.pop('user_location_result') # Limpa o resultado para evitar re-execução desnecessária
+        st.session_state.current_city_search = st.session_state.current_city_display
+        st.session_state.pop('user_location_result')
 
-    # Exibe erros da geolocalização, se houver
+
     if st.session_state.get('location_error_message'):
         st.warning(st.session_state.location_error_message)
         st.session_state.pop('location_error_message')
 
-    # Lógica para determinar qual localização exibir (manual ou automática)
     selected_city_data = None
     if st.session_state.get('current_location_coords') and not city_name_input:
-        # Se a localização automática foi detectada E o usuário não digitou nada
         selected_city_data = {
             "name": st.session_state.get('current_city_display', "Minha Localização"),
             "latitude": st.session_state.current_location_coords["lat"],
             "longitude": st.session_state.current_location_coords["lon"],
-            "admin1": "", "country": "" # Estes podem ser aprimorados com o geocoding reverso
+            "admin1": "", "country": ""
         }
         st.info(f"Mostrando clima para: **{selected_city_data['name']}**")
     elif city_name_input:
-        # Se o usuário digitou uma cidade
         city_options = get_city_options(city_name_input)
         if city_options:
             options_display = [f"{city['name']}, {city.get('admin1', '')}, {city.get('country', '')} (Lat: {city['latitude']:.2f}, Lon: {city['longitude']:.2f})" for city in city_options]
@@ -969,19 +1130,16 @@ def main():
                 "📍 Selecione a localidade correta:",
                 options_display,
                 key="city_selection_box",
-                index=0 # Seleciona a primeira opção por padrão
+                index=0
             )
             selected_index = options_display.index(selected_option)
             selected_city_data = city_options[selected_index]
-            # Uma vez que uma cidade é selecionada manualmente, resetar o estado da geolocalização para evitar conflitos
             st.session_state.current_location_coords = None
             st.session_state.current_city_display = ""
         else:
             st.warning("Nenhuma cidade encontrada com esse nome. Tente novamente ou use a localização automática.")
 
-    # Exibe as abas de informações climáticas se uma cidade foi selecionada/detectada
     if selected_city_data:
-        # Obter todos os dados de API necessários para as abas
         weather_data = get_weather_data(
             selected_city_data["latitude"],
             selected_city_data["longitude"],
@@ -998,9 +1156,8 @@ def main():
         )
 
         if weather_data:
-            # Define as abas principais
-            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-                "⏱️ Atual", "📅 7 Dias", "📊 16 Dias",
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+                "⏱️ Atual", " hourly_forecast Horário", "📅 7 Dias", "📊 16 Dias",
                 "⚠️ Eventos Extremos", "🔥 Focos de Incêndio", "🌬️ Qualidade do Ar"
             ])
 
@@ -1008,32 +1165,32 @@ def main():
                 show_current_weather(selected_city_data, weather_data, fire_data, air_quality_data)
 
             with tab2:
-                show_weekly_forecast(selected_city_data, weather_data)
+                show_hourly_forecast(selected_city_data, weather_data)
 
             with tab3:
-                show_extended_forecast(selected_city_data, weather_data)
+                show_weekly_forecast(selected_city_data, weather_data)
 
             with tab4:
-                show_extreme_events(selected_city_data, weather_data)
+                show_extended_forecast(selected_city_data, weather_data)
 
             with tab5:
-                show_fire_data(selected_city_data)
+                show_extreme_events(selected_city_data, weather_data)
 
             with tab6:
+                show_fire_data(selected_city_data)
+
+            with tab7:
                 show_air_quality_data(selected_city_data)
         else:
             st.error("Não foi possível obter dados de clima para a localização selecionada.")
     elif st.session_state.get('show_stored_reports'):
-        # Se o botão de ver laudos foi clicado na sidebar, mostra a seção de laudos
         show_reports_section()
     else:
-        # Mensagem inicial se nenhuma cidade foi selecionada
         st.info("Por favor, digite uma cidade ou use sua localização para começar.")
 
 if __name__ == "__main__":
     main()
 
-# Rodapé estilizado
 st.markdown("---")
 st.markdown("""
 <div class="footer">
