@@ -16,6 +16,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import math
 
+# --- INÍCIO DAS NOVAS BIBLIOTECAS ---
+from folium.plugins import Draw
+import geopandas as gpd
+from shapely.geometry import shape
+from pyproj import Geod
+# --- FIM DAS NOVAS BIBLIOTECAS ---
+
 # Carregar variáveis de ambiente
 load_dotenv()
 NASA_API_KEY = os.getenv("NASA_API_KEY", "de744659515921a11cf8cabac3dfed1e")
@@ -207,13 +214,13 @@ def init_db():
     conn = sqlite3.connect('weather_reports.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS reports
-                (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 city TEXT,
-                 date TEXT,
-                 event_date TEXT,
-                 report_type TEXT,
-                 pdf_content BLOB,
-                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  city TEXT,
+                  date TEXT,
+                  event_date TEXT,
+                  report_type TEXT,
+                  pdf_content BLOB,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.commit()
     conn.close()
 
@@ -1029,9 +1036,9 @@ def show_extreme_events(city_data, weather_data):
                              caption=f"🌍 Imagem de satélite aproximada - {satellite_img['source']} ({event['date']})")
 
                     if st.button(f"📝 Gerar Laudo Técnico para {event['date']}",
-                                 key=f"report_{event['date']}",
-                                 type="primary",
-                                 help="Clique para gerar um laudo técnico detalhado deste evento"):
+                                key=f"report_{event['date']}",
+                                type="primary",
+                                help="Clique para gerar um laudo técnico detalhado deste evento"):
                         report = generate_technical_report([event], city_data, [satellite_img])
                         pdf_content = generate_pdf_report(report)
 
@@ -1178,13 +1185,102 @@ def show_air_quality_data(city_data):
             st.plotly_chart(fig_pm, use_container_width=True)
 
             fig_gases = px.line(aq_df, x="Hora", y=["Monóxido de Carbono (µg/m³)", "Dióxido de Nitrogênio (µg/m³)", "Ozônio (µg/m³)"],
-                                title="Gases Poluentes",
-                                labels={"value": "Concentração (µg/m³)", "variable": "Gás"})
+                                  title="Gases Poluentes",
+                                  labels={"value": "Concentração (µg/m³)", "variable": "Gás"})
             fig_gases.update_layout(hovermode="x unified")
             st.plotly_chart(fig_gases, use_container_width=True)
     else:
         st.info("Nenhum dado de qualidade do ar disponível para esta localização.")
 
+# --- INÍCIO DA NOVA FUNÇÃO DE ANÁLISE RURAL ---
+def show_rural_analysis_map(city_data):
+    """
+    Exibe um mapa interativo para análise rural, permitindo desenho,
+    cálculo de métricas e geração de memorial descritivo.
+    """
+    st.header("🗺️ Análise GeoRural Interativa")
+    st.info("Utilize as ferramentas de desenho no canto esquerdo do mapa para delimitar uma área (polígono ou retângulo). Os cálculos serão exibidos automaticamente.")
+
+    map_center = [city_data["latitude"], city_data["longitude"]]
+
+    m = folium.Map(
+        location=map_center,
+        zoom_start=13,
+        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        attr="Google Satellite"
+    )
+
+    draw_plugin = Draw(
+        export=False,
+        draw_options={
+            'polyline': False,
+            'polygon': {'showArea': True, 'allowIntersection': False},
+            'rectangle': {'showArea': True},
+            'circle': False,
+            'marker': False,
+            'circlemarker': False
+        },
+        edit_options={'edit': True}
+    )
+    m.add_child(draw_plugin)
+
+    map_output = st_folium(m, width=None, height=600, key="rural_analysis_map")
+
+    if map_output and map_output.get("all_drawings"):
+        last_drawing = map_output["all_drawings"][-1]
+        geometry = last_drawing["geometry"]
+        poly_shape = shape(geometry)
+        gdf = gpd.GeoDataFrame([1], geometry=[poly_shape], crs="EPSG:4326")
+
+        st.success("Área desenhada! Veja os cálculos abaixo.")
+
+        utm_crs = gdf.estimate_utm_crs()
+        gdf_utm = gdf.to_crs(utm_crs)
+        area_m2 = gdf_utm.area.iloc[0]
+        perimeter_m = gdf_utm.length.iloc[0]
+
+        hectares = area_m2 / 10000
+        alqueires_paulista = area_m2 / 24200
+        perimeter_km = perimeter_m / 1000
+
+        st.subheader("Resultados da Medição")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Área (m²)", f"{area_m2:,.2f}")
+        col2.metric("Área (ha)", f"{hectares:,.4f}")
+        col3.metric("Alqueires (Paulista)", f"{alqueires_paulista:,.4f}")
+        col4.metric("Perímetro (km)", f"{perimeter_km:,.3f}")
+        st.caption("*Alqueire Paulista = 24.200 m²")
+
+        with st.expander("📄 Gerar Memorial Descritivo", expanded=True):
+            coords = list(poly_shape.exterior.coords)
+            geod = Geod(ellps='WGS84')
+            vertices_data = []
+            segments_data = []
+
+            for i, (lon, lat) in enumerate(coords[:-1]):
+                vertices_data.append({"Vértice": f"P-{i+1}", "Latitude": f"{lat:.6f}", "Longitude": f"{lon:.6f}"})
+            
+            for i in range(len(coords) - 1):
+                lon1, lat1 = coords[i]
+                lon2, lat2 = coords[i+1]
+                fwd_azimuth, _, distance = geod.inv(lon1, lat1, lon2, lat2)
+                segments_data.append({
+                    "De": f"P-{i+1}",
+                    "Para": f"P-{i+2}" if i < len(coords) - 2 else "P-1",
+                    "Distância (m)": f"{distance:,.2f}",
+                    "Azimute (Graus)": f"{fwd_azimuth:.4f}"
+                })
+
+            st.subheader("Tabela de Vértices")
+            st.dataframe(pd.DataFrame(vertices_data).set_index("Vértice"), use_container_width=True)
+
+            st.subheader("Tabela de Segmentos")
+            st.dataframe(pd.DataFrame(segments_data).set_index("De"), use_container_width=True)
+            
+            st.warning("""
+            **AVISO LEGAL:** Estes dados são preliminares e gerados automaticamente. Não substituem um levantamento topográfico profissional.
+            """)
+# --- FIM DA NOVA FUNÇÃO DE ANÁLISE RURAL ---
 
 # Interface principal
 def main():
@@ -1238,16 +1334,16 @@ def main():
 
     with col1:
         city_name_input = st.text_input("Digite o nome da cidade:",
-                                       value=st.session_state.current_city_search,
-                                       key="city_search_input",
-                                       placeholder="Ex: São Paulo, Rio de Janeiro")
+                                      value=st.session_state.current_city_search,
+                                      key="city_search_input",
+                                      placeholder="Ex: São Paulo, Rio de Janeiro")
 
     with col2:
         st.write("") # Espaçamento para alinhar o botão
         st.write("")
         if st.button("📍 Usar Minha Localização",
-                     help="Clique e permita o acesso à localização no seu navegador",
-                     key="get_location_button"):
+                      help="Clique e permita o acesso à localização no seu navegador",
+                      key="get_location_button"):
             st.session_state.trigger_geolocation = True
             st.session_state.current_city_search = ""
             st.session_state.current_city_display = ""
@@ -1261,7 +1357,7 @@ def main():
     const triggerGeolocation = {str(st.session_state.get('trigger_geolocation', False)).lower()};
 
     if (streamlitAppReady && triggerGeolocation) {{
-        Streamlit.setComponentValue('trigger_geolocation', false);
+        Streamlit.setComponentValue({{ 'trigger_geolocation': false }});
 
         if (navigator.geolocation) {{
             navigator.geolocation.getCurrentPosition(
@@ -1269,7 +1365,7 @@ def main():
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
                     const message = `Minha Localização,${{lat}},${{lon}}`;
-                    Streamlit.setComponentValue('user_location_result', message);
+                    Streamlit.setComponentValue({{ 'user_location_result': message }});
                 }},
                 function(error) {{
                     let errorMessage;
@@ -1286,12 +1382,12 @@ def main():
                         default:
                             errorMessage = "Ocorreu um erro desconhecido ao tentar obter a localização.";
                     }}
-                    Streamlit.setComponentValue('location_error_message', errorMessage);
+                    Streamlit.setComponentValue({{ 'location_error_message': errorMessage }});
                 }},
                 {{enableHighAccuracy: true, timeout: 10000, maximumAge: 0}}
             );
         }} else {{
-            Streamlit.setComponentValue('location_error_message', "Geolocalização não é suportada por este navegador.");
+            Streamlit.setComponentValue({{ 'location_error_message': "Geolocalização não é suportada por este navegador." }});
         }}
     }}
     </script>
@@ -1377,31 +1473,37 @@ def main():
         )
 
         if weather_data:
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            # --- INÍCIO DA MODIFICAÇÃO DAS ABAS ---
+            tab_list = st.tabs([
                 "⏱️ Atual", "Previsão Horária", "📅 7 Dias", "📊 16 Dias",
-                "⚠️ Eventos Extremos", "🔥 Focos de Incêndio", "🌬️ Qualidade do Ar"
+                "⚠️ Eventos Extremos", "🔥 Focos de Incêndio", "🌬️ Qualidade do Ar",
+                "🗺️ Análise GeoRural" # <-- NOVA ABA ADICIONADA
             ])
 
-            with tab1:
+            with tab_list[0]:
                 show_current_weather(selected_city_data, weather_data, fire_data, air_quality_data)
 
-            with tab2: # Esta aba agora vai gerenciar tanto os resumos quanto os gráficos detalhados
+            with tab_list[1]: 
                 show_hourly_summary_and_detailed_chart(selected_city_data, weather_data)
 
-            with tab3:
+            with tab_list[2]:
                 show_weekly_forecast(selected_city_data, weather_data)
 
-            with tab4:
+            with tab_list[3]:
                 show_extended_forecast(selected_city_data, weather_data)
 
-            with tab5:
+            with tab_list[4]:
                 show_extreme_events(selected_city_data, weather_data)
 
-            with tab6:
+            with tab_list[5]:
                 show_fire_data(selected_city_data)
 
-            with tab7:
+            with tab_list[6]:
                 show_air_quality_data(selected_city_data)
+            
+            with tab_list[7]: # <-- CONTEÚDO DA NOVA ABA
+                show_rural_analysis_map(selected_city_data)
+            # --- FIM DA MODIFICAÇÃO DAS ABAS ---
         else:
             st.error("Não foi possível obter dados de clima para a localização selecionada.")
     elif st.session_state.get('show_stored_reports'):
